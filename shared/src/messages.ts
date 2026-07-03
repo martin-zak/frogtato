@@ -64,8 +64,8 @@ export interface PlayerSnap {
   flies: number;
   downed: boolean;
   spectator: boolean;
-  /** Index in this array = weapon slot. */
-  weapons: { kind: WeaponKind; level: WeaponLevel }[];
+  /** Index in this array = weapon slot; null = empty slot. */
+  weapons: ({ kind: WeaponKind; level: WeaponLevel } | null)[];
   stats: { damagePct: number; moveSpeed: number; maxHp: number };
   /** Shop-phase ready state. */
   ready: boolean;

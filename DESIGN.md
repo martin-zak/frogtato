@@ -234,7 +234,7 @@ Per tick: apply latest input per player → move players (clamped to arena) → 
 enemies (steering: chase / keep-distance) → tick weapon cooldowns, acquire targets,
 spawn attacks → move projectiles, resolve collisions (circle tests) → apply damage,
 deaths, fly drops → wave director (spawn timers, wave timer) → check wipe/victory →
-every 3rd tick, broadcast snapshot.
+broadcast snapshot at `SNAPSHOT_HZ` (20 Hz, i.e. every 1.5 sim ticks on average).
 
 ### Arena
 Single static map: an elliptical pond ~1600×1200 px with a solid edge (players and
