@@ -61,6 +61,10 @@ export interface PlayerState {
   stats: { damagePct: number; moveSpeed: number; maxHp: number };
   ready: boolean;
   input: PlayerInputState;
+  /** Run-lifetime scoreboard counters (DESIGN §8: 10s end-of-run scoreboard). Reset each new run. */
+  killCount: number;
+  damageDealt: number;
+  fliesCollected: number;
 }
 
 export function createPlayer(id: string, colorIndex: number, token: string): PlayerState {
@@ -86,6 +90,9 @@ export function createPlayer(id: string, colorIndex: number, token: string): Pla
     },
     ready: false,
     input: { seq: -1, up: false, down: false, left: false, right: false },
+    killCount: 0,
+    damageDealt: 0,
+    fliesCollected: 0,
   };
 }
 

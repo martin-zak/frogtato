@@ -82,12 +82,20 @@ function firstEnemyOnSegment(
   return best;
 }
 
-/** Applies `amount` damage to `enemy` via combat.damageEnemy; removes it from `enemies` on death. */
-function hitEnemy(enemy: EnemyState, amount: number, ctx: WeaponContext): void {
+/**
+ * Applies `amount` damage to `enemy` via combat.damageEnemy; removes it from
+ * `enemies` on death. Also attributes the damage/kill to `player`'s scoreboard
+ * counters (DESIGN §8 end-of-run scoreboard).
+ */
+function hitEnemy(player: PlayerState, enemy: EnemyState, amount: number, ctx: WeaponContext): void {
   const kind = ENEMY_KIND_BY_TYPE[enemy.type];
   const flyDrop = ENEMY_DEFS[enemy.type].flyDrop;
+  player.damageDealt += amount;
   const died = combat.damageEnemy(enemy, kind, flyDrop, amount, ctx.emit, ctx.spawnFlies);
-  if (died) ctx.enemies.delete(enemy.id);
+  if (died) {
+    player.killCount += 1;
+    ctx.enemies.delete(enemy.id);
+  }
 }
 
 /** Tongue Lash: instant hit on the first enemy along the line toward `target`. */
@@ -98,7 +106,7 @@ function fireTongue(player: PlayerState, target: EnemyState, range: number, dama
   const dirx = dx / dist;
   const diry = dy / dist;
   const hit = firstEnemyOnSegment(player.x, player.y, dirx, diry, range, ctx.enemies);
-  if (hit) hitEnemy(hit, damage, ctx);
+  if (hit) hitEnemy(player, hit, damage, ctx);
 }
 
 /** Bubble Blaster: spawns a player-source projectile toward the target's current position. */
@@ -132,7 +140,7 @@ function fireCroak(player: PlayerState, radius: number, damage: number, ctx: Wea
     const d = Math.hypot(enemy.x - player.x, enemy.y - player.y);
     if (d > radius) continue;
     hitAny = true;
-    hitEnemy(enemy, damage, ctx);
+    hitEnemy(player, enemy, damage, ctx);
   }
   return hitAny;
 }

@@ -13,7 +13,8 @@
     "typecheck": "tsc -b",
     "check:skeleton": "node scripts/skeleton-check.mjs",
     "check:combat": "node scripts/combat-check.mjs",
-    "check:weapons": "node scripts/weapons-check.mjs"
+    "check:weapons": "node scripts/weapons-check.mjs",
+    "check:loop": "node scripts/loop-check.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",

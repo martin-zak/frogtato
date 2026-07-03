@@ -62,6 +62,7 @@ export function stepFlies(flies: Map<string, FlyState>, players: Iterable<Player
 
     if (bestDist <= COLLECT_DISTANCE) {
       target.flies += 1;
+      target.fliesCollected += 1;
       flies.delete(fly.id);
       continue;
     }

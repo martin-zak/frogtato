@@ -31,6 +31,12 @@ function parseClientMsg(raw: unknown): ClientMsg | undefined {
   return parsed as ClientMsg;
 }
 
+// Port override for local playtesting: the user may already have a dev server
+// bound to the default SERVER_PORT (8080). PORT lets check scripts (and this
+// task's own headless spawns) run a second, independent server instance on a
+// different port (e.g. 8081) without ever touching 8080.
+const PORT = Number(process.env.PORT ?? SERVER_PORT);
+
 export function startServer(): void {
   const httpServer = createServer((_req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
@@ -118,7 +124,7 @@ export function startServer(): void {
 
   room.start();
 
-  httpServer.listen(SERVER_PORT, () => {
-    console.log(`[frogtato] server listening on :${SERVER_PORT}`);
+  httpServer.listen(PORT, () => {
+    console.log(`[frogtato] server listening on :${PORT}`);
   });
 }

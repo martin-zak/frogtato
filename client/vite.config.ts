@@ -7,5 +7,8 @@ export default defineConfig({
   publicDir: "assets",
   server: {
     port: 5173,
+    // Expose on the LAN so other machines can join (DESIGN §8: friends
+    // connect to your dev server directly in v0.1).
+    host: true,
   },
 });

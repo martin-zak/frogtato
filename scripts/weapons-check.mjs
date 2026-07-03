@@ -51,10 +51,20 @@
 //       exactly the "stay ready, don't fire into the void" invariant, just
 //       verified from the fire side rather than the silence side.
 
+// DEVIATION (PLAN.md T8): enemies now only exist during the "wave" phase
+// (T8 deleted T5's always-on interim spawner), so this script sends `start`
+// (from lobby) + a debug `timescale` once, right after connecting, before
+// anything else. It also auto-`ready`s on every shop phase it sees so the
+// bubble sub-test (which needs a wave with snails — wave 1 is wasp-only) gets
+// there quickly. Everything else is unchanged.
+
 import WebSocket from 'ws';
 import { WEAPON_DEFS, ENEMY_DEFS, FROG_BASE_STATS } from '@frogtato/shared';
 
-const URL = 'ws://localhost:8080';
+// FROGTATO_PORT override (PLAN.md T8): see skeleton-check.mjs.
+const PORT = process.env.FROGTATO_PORT ?? '8080';
+const URL = `ws://localhost:${PORT}`;
+const TIMESCALE = 8;
 
 const results = [];
 let failed = false;
@@ -123,6 +133,9 @@ async function connectBot() {
       msg._recvAt = Date.now();
       lastSnapshot = msg;
       snapshots.push(msg);
+      // Auto-ready on every shop phase so waves keep cycling (needed to reach
+      // a wave with snails for the bubble sub-test — see file header).
+      if (msg.phase === 'shop') ws.send(JSON.stringify({ type: 'ready' }));
     } else if (msg.type === 'event') {
       const event = { ...msg.event, _recvAt: Date.now(), _snapshotAtRecv: lastSnapshot };
       events.push(event);
@@ -188,7 +201,9 @@ function checkFiresOnlyInRange(bot, weaponKind, rangePx, slackPx) {
 async function main() {
   const bot = await connectBot();
   bot.ws.send(JSON.stringify({ type: 'debug', invincible: true }));
-  await waitForMessage(bot.ws, (m) => m.type === 'snapshot' && selfIn(m, bot) !== undefined);
+  bot.ws.send(JSON.stringify({ type: 'debug', timescale: TIMESCALE }));
+  bot.ws.send(JSON.stringify({ type: 'start' }));
+  await waitForMessage(bot.ws, (m) => m.type === 'snapshot' && m.phase === 'wave' && selfIn(m, bot) !== undefined);
 
   // =========================================================================
   // (c) Croak Nova: AoE hits multiple clustered enemies in one fire.
@@ -400,7 +415,11 @@ async function main() {
   // (d) Weapons never fire without an enemy in range (checked retroactively
   // over everything this bot fired above — see file header for why).
   // =========================================================================
-  const RANGE_SLACK_PX = 120; // tick quantization + enemy movement + snapshot-vs-event staleness
+  // Tick quantization + enemy movement + snapshot-vs-event staleness. Scaled
+  // by TIMESCALE (PLAN.md T8): debug timescale multiplies simulated dt per
+  // tick, so entities can travel much further between two real-time-spaced
+  // (20Hz) snapshots than the original 1x-only slack accounted for.
+  const RANGE_SLACK_PX = 120 * TIMESCALE;
 
   const tongueRangeCheck = checkFiresOnlyInRange(bot, 'tongue', tongueLvl1.range, RANGE_SLACK_PX);
   check(

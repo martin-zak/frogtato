@@ -1,18 +1,21 @@
 // Single Room per server process (DESIGN §8: one game room, no lobbies/matchmaking
-// in v0.1). Owns the player set, the fixed-timestep sim loop, and snapshot
-// broadcasting. Phase is hardcoded to "wave" for T3 — the phase machine (lobby/shop/
-// scoreboard transitions) is T8's job; this just needs frogs to move.
-//
-// T5 adds enemies, projectiles, flies and their per-tick simulation, wired in
-// here as the glue between the standalone sim/*.ts modules (each of which stays
-// decoupled from the others where possible — see module doc-comments).
+// in v0.1). Owns the player set, the fixed-timestep sim loop, snapshot
+// broadcasting, and — as of T8 — the phase machine (lobby -> wave(1..5) -> shop
+// -> ... -> victory|gameover -> scoreboard -> lobby), the wave director, and
+// downed/revive/join-rule handling. Per-transition mutations live in
+// game/phases.ts and game/waves.ts; this class is the tick-loop orchestrator
+// that ties them together with the sim/*.ts step functions.
 
 import {
   ENEMY_DEFS,
   MAX_PLAYERS,
   PLAYER_COLOR_ORDER,
+  SCOREBOARD_DURATION_SEC,
+  SHOP_DURATION_SEC,
   SIM_HZ,
   SNAPSHOT_HZ,
+  WAVES,
+  WAVE_COUNT,
   makeIdFactory,
   type ClientDebugMsg,
   type ClientMsg,
@@ -22,14 +25,7 @@ import {
 } from '@frogtato/shared';
 import { applyInput, createPlayer, setWeaponSlot, stepPlayerMovement, toPlayerSnap, type PlayerState } from './sim/players.js';
 import * as combat from './sim/combat.js';
-import {
-  createInterimSpawnerState,
-  ENEMY_KIND_BY_TYPE,
-  stepEnemyAi,
-  stepInterimSpawner,
-  toEnemySnap,
-  type EnemyState,
-} from './sim/enemies.js';
+import { ENEMY_KIND_BY_TYPE, stepEnemyAi, toEnemySnap, type EnemyState } from './sim/enemies.js';
 import { spawnFliesAt, stepFlies, toFlySnap, type FlyState } from './sim/flies.js';
 import {
   circlesOverlap,
@@ -39,6 +35,19 @@ import {
   type ProjectileState,
 } from './sim/projectiles.js';
 import { stepPlayerWeapons } from './sim/weapons.js';
+import { createWaveDirectorState, resetWaveDirectorState, stepWaveDirector, type WaveDirectorState } from './game/waves.js';
+import {
+  activateSpectators,
+  allActivePlayersDowned,
+  allActivePlayersReady,
+  buildScoreboard,
+  clampTimescale,
+  healActivePlayers,
+  resetPlayerForNewRun,
+  resetReadyFlags,
+  reviveDownedPlayers,
+  vacuumFliesToNearestPlayer,
+} from './game/phases.js';
 
 export interface RoomCallbacks {
   broadcast(msg: ServerMsg): void;
@@ -62,15 +71,21 @@ const ACCUMULATOR_SAMPLE_MS = 1000 / SIM_HZ / 2;
 const MAX_FRAME_SEC = 0.25;
 
 export class Room {
-  readonly phase: Phase = 'wave';
+  phase: Phase = 'lobby';
+  /** Current wave number (1..WAVE_COUNT while in/around a wave; 0 in lobby). */
+  private wave = 0;
+  /** Simulated seconds remaining in the current timed phase; undefined in lobby (untimed). */
+  private phaseRemainingSec: number | undefined;
 
   private players = new Map<string, PlayerState>();
   private enemies = new Map<string, EnemyState>();
   private projectiles = new Map<string, ProjectileState>();
   private flies = new Map<string, FlyState>();
-  private spawner = createInterimSpawnerState();
+  private waveDirector: WaveDirectorState = createWaveDirectorState();
   // Debug-only (T5): NODE_ENV gate lives at the message-routing layer (net.ts).
   private invinciblePlayers = new Set<string>();
+  /** Debug-only (T8): multiplies simulated dt per tick, clamped 1..20. */
+  private timescale = 1;
 
   private nextEnemyId = makeIdFactory('enemy');
   private nextProjectileId = makeIdFactory('projectile');
@@ -100,14 +115,22 @@ export class Room {
     return 0; // unreachable: callers must check isFull() before addPlayer()
   }
 
+  /**
+   * Join rules (DESIGN §8): joiners during lobby/shop spawn immediately with
+   * the default loadout and 0 flies; joiners mid-wave/scoreboard spectate
+   * until the next shop/lobby (game/phases.ts's `activateSpectators` clears
+   * this at the right transitions).
+   */
   addPlayer(id: string, token: string): PlayerState {
     const player = createPlayer(id, this.nextFreeColorIndex(), token);
+    player.spectator = this.phase === 'wave' || this.phase === 'scoreboard';
     this.players.set(id, player);
     return player;
   }
 
   removePlayer(id: string): void {
     this.players.delete(id);
+    this.invinciblePlayers.delete(id);
   }
 
   handleClientMsg(playerId: string, msg: ClientMsg): void {
@@ -117,13 +140,18 @@ export class Room {
       case 'input':
         applyInput(player, msg);
         break;
+      case 'start':
+        if (this.phase === 'lobby') this.beginRun();
+        break;
+      case 'ready':
+        if (this.phase === 'shop' && !player.spectator) player.ready = true;
+        break;
       case 'debug':
         // NODE_ENV gating happens in net.ts before this is ever called.
         this.handleDebugMsg(player, msg);
         break;
-      // "start" / "buy" / "ready": no phase machine or shop exist yet (T8/T9).
-      // Valid-but-not-yet-implemented messages are ignored quietly rather than
-      // treated as protocol errors.
+      // "buy": no shop purchase logic exists yet (T9). Ignored quietly rather
+      // than treated as a protocol error.
       default:
         break;
     }
@@ -141,7 +169,7 @@ export class Room {
       else this.invinciblePlayers.delete(player.id);
     }
     if (msg.give !== undefined) setWeaponSlot(player, msg.give.slot, msg.give.weapon, msg.give.level);
-    if (msg.timescale !== undefined) console.warn('[frogtato] debug "timescale" not implemented until T8');
+    if (msg.timescale !== undefined) this.timescale = clampTimescale(msg.timescale);
   }
 
   private debugKillEnemy(enemyId: string): void {
@@ -181,17 +209,126 @@ export class Room {
     }
   }
 
+  // ---------------------------------------------------------------------
+  // Phase machine (DESIGN §2/§8)
+  // ---------------------------------------------------------------------
+
+  /** `start` from lobby: full reset, then begin wave 1. */
+  private beginRun(): void {
+    for (const player of this.players.values()) resetPlayerForNewRun(player);
+    this.enemies.clear();
+    this.projectiles.clear();
+    this.flies.clear();
+    this.wave = 1;
+    this.enterWavePhase();
+  }
+
+  private enterWavePhase(): void {
+    this.phase = 'wave';
+    resetWaveDirectorState(this.waveDirector);
+    const waveDef = WAVES[this.wave - 1]!;
+    this.phaseRemainingSec = waveDef.durationSec;
+    this.emit({ type: 'waveStart', wave: this.wave });
+  }
+
+  /** Wave timer elapsed: despawn enemies/enemy-projectiles, vacuum flies, heal, advance. */
+  private endWave(): void {
+    this.enemies.clear();
+    for (const [id, projectile] of this.projectiles) {
+      if (projectile.source === 'enemy') this.projectiles.delete(id);
+    }
+    vacuumFliesToNearestPlayer(this.flies, this.players.values());
+    this.emit({ type: 'waveEnd', wave: this.wave });
+    healActivePlayers(this.players.values());
+
+    if (this.wave >= WAVE_COUNT) {
+      this.emit({ type: 'victory', scoreboard: buildScoreboard(this.players.values()) });
+      this.enterScoreboardPhase();
+    } else {
+      this.enterShopPhase();
+    }
+  }
+
+  private enterShopPhase(): void {
+    this.phase = 'shop';
+    activateSpectators(this.players.values());
+    resetReadyFlags(this.players.values());
+    this.phaseRemainingSec = SHOP_DURATION_SEC;
+  }
+
+  /** Shop timer elapsed, or every active player readied up: revive downed, advance to the next wave. */
+  private endShop(): void {
+    reviveDownedPlayers(this.players.values());
+    this.wave += 1;
+    this.enterWavePhase();
+  }
+
+  /** All active players downed mid-wave (DESIGN §2 wipe): immediate game over. */
+  private triggerGameOver(): void {
+    this.enemies.clear();
+    this.projectiles.clear();
+    this.flies.clear();
+    this.emit({ type: 'gameOver', scoreboard: buildScoreboard(this.players.values()) });
+    this.enterScoreboardPhase();
+  }
+
+  private enterScoreboardPhase(): void {
+    this.phase = 'scoreboard';
+    this.phaseRemainingSec = SCOREBOARD_DURATION_SEC;
+  }
+
+  /** Scoreboard timer elapsed: activate any remaining spectators, full reset, back to lobby. */
+  private endScoreboard(): void {
+    activateSpectators(this.players.values());
+    for (const player of this.players.values()) resetPlayerForNewRun(player);
+    this.wave = 0;
+    this.phase = 'lobby';
+    this.phaseRemainingSec = undefined;
+  }
+
+  /** Ticks the current phase's countdown (simulated time, scaled by debug timescale) and transitions on expiry. */
+  private stepPhaseTimer(dtSec: number): void {
+    if (this.phaseRemainingSec === undefined) return;
+    this.phaseRemainingSec -= dtSec;
+    if (this.phaseRemainingSec > 0) return;
+
+    switch (this.phase) {
+      case 'wave':
+        this.endWave();
+        break;
+      case 'shop':
+        this.endShop();
+        break;
+      case 'scoreboard':
+        this.endScoreboard();
+        break;
+      case 'lobby':
+        break;
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Tick loop
+  // ---------------------------------------------------------------------
+
   private tickOnce(): void {
     this.tick += 1;
+    const dt = FIXED_DT_SEC * this.timescale;
+
     for (const player of this.players.values()) {
-      stepPlayerMovement(player, FIXED_DT_SEC);
+      stepPlayerMovement(player, dt);
     }
 
-    stepInterimSpawner(this.spawner, FIXED_DT_SEC, this.enemies, this.players.values(), this.nextEnemyId);
-    this.stepEnemies();
-    this.stepWeapons();
-    this.stepProjectiles();
-    stepFlies(this.flies, this.players.values(), FIXED_DT_SEC);
+    if (this.phase === 'shop' && allActivePlayersReady(this.players.values())) {
+      this.endShop();
+    }
+
+    if (this.phase === 'wave') {
+      this.stepWaveSim(dt);
+    }
+
+    stepFlies(this.flies, this.players.values(), dt);
+    this.stepPhaseTimer(dt);
 
     this.snapshotAccumulatorTicks += 1;
     if (this.snapshotAccumulatorTicks >= TICKS_PER_SNAPSHOT) {
@@ -200,11 +337,23 @@ export class Room {
     }
   }
 
-  private stepEnemies(): void {
+  private stepWaveSim(dt: number): void {
+    const waveDef = WAVES[this.wave - 1]!;
+    stepWaveDirector(this.waveDirector, waveDef, dt, this.playerCount, this.enemies, this.players.values(), this.nextEnemyId);
+    this.stepEnemies(dt);
+    this.stepWeapons(dt);
+    this.stepProjectiles(dt);
+
+    if (allActivePlayersDowned(this.players.values())) {
+      this.triggerGameOver();
+    }
+  }
+
+  private stepEnemies(dt: number): void {
     for (const enemy of this.enemies.values()) {
       stepEnemyAi(enemy, {
         players: this.players.values(),
-        dtSec: FIXED_DT_SEC,
+        dtSec: dt,
         onContactDamage: (_wasp, target) => {
           if (this.invinciblePlayers.has(target.id)) return;
           combat.damagePlayer(target, ENEMY_DEFS.wasp.contactDamage, (event) => this.emit(event));
@@ -215,11 +364,11 @@ export class Room {
     }
   }
 
-  private stepWeapons(): void {
+  private stepWeapons(dt: number): void {
     for (const player of this.players.values()) {
       stepPlayerWeapons(player, {
         enemies: this.enemies,
-        dtSec: FIXED_DT_SEC,
+        dtSec: dt,
         emit: (event) => this.emit(event),
         spawnProjectile: (projectile) => this.projectiles.set(projectile.id, projectile),
         nextProjectileId: this.nextProjectileId,
@@ -228,9 +377,9 @@ export class Room {
     }
   }
 
-  private stepProjectiles(): void {
+  private stepProjectiles(dt: number): void {
     for (const projectile of Array.from(this.projectiles.values())) {
-      stepProjectile(projectile, FIXED_DT_SEC);
+      stepProjectile(projectile, dt);
 
       if (isOutsideArena(projectile.x, projectile.y)) {
         this.projectiles.delete(projectile.id);
@@ -254,6 +403,8 @@ export class Room {
         for (const enemy of this.enemies.values()) {
           const radius = combat.ENEMY_RADIUS[ENEMY_KIND_BY_TYPE[enemy.type]];
           if (!circlesOverlap(projectile.x, projectile.y, projectile.radius, enemy.x, enemy.y, radius)) continue;
+          const owner = this.players.get(projectile.ownerId);
+          if (owner) owner.damageDealt += projectile.damage;
           const died = combat.damageEnemy(
             enemy,
             ENEMY_KIND_BY_TYPE[enemy.type],
@@ -262,7 +413,10 @@ export class Room {
             (event) => this.emit(event),
             (x, y, count) => spawnFliesAt(this.nextFlyId, x, y, count, this.flies),
           );
-          if (died) this.enemies.delete(enemy.id);
+          if (died) {
+            if (owner) owner.killCount += 1;
+            this.enemies.delete(enemy.id);
+          }
           this.projectiles.delete(projectile.id);
           break;
         }
@@ -275,6 +429,8 @@ export class Room {
       type: 'snapshot',
       tick: this.tick,
       phase: this.phase,
+      ...(this.wave > 0 ? { wave: this.wave } : {}),
+      ...(this.phaseRemainingSec !== undefined ? { phaseEndsAt: Date.now() + this.phaseRemainingSec * 1000 } : {}),
       players: Array.from(this.players.values(), toPlayerSnap),
       enemies: Array.from(this.enemies.values(), toEnemySnap),
       projectiles: Array.from(this.projectiles.values(), toProjectileSnap),

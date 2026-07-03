@@ -1,9 +1,9 @@
-// Enemy entities: state, the interim spawner, and per-tick AI (DESIGN §5).
+// Enemy entities: state, spawn-point selection, and per-tick AI (DESIGN §5).
 //
-// The interim spawner section below is a self-contained block (its own state
-// type + one step function) that T8's wave director replaces wholesale — see
-// PLAN.md T5/T8. Deleting `InterimSpawnerState`/`createInterimSpawnerState`/
-// `stepInterimSpawner` and the one call site in room.ts is the entire swap.
+// T5's interim spawner (fixed cadence/cap, alternating wasp/snail) lived here
+// and has been deleted per PLAN.md T8 — replaced wholesale by
+// game/waves.ts's WaveDirector, which reuses `pickEnemySpawnPoint` below (the
+// same arena-edge / min-distance-from-players logic the interim spawner used).
 
 import { ARENA, ENEMY_DEFS, type EnemyKind, type EnemySnap } from '@frogtato/shared';
 import { PLAYER_RADIUS, WASP_RADIUS, ACID_PROJECTILE_RADIUS } from './combat.js';
@@ -55,22 +55,9 @@ export function toEnemySnap(e: EnemyState): EnemySnap {
 }
 
 // ---------------------------------------------------------------------------
-// Interim spawner (T5) — replaced wholesale by T8's wave director.
+// Spawn-point selection (DESIGN §5/§9): arena-edge points, retried to land
+// >= ARENA.minEnemySpawnDistanceFromPlayers from every player.
 // ---------------------------------------------------------------------------
-
-/** Fixed spawn cadence for the interim spawner (T8 replaces this with WAVES). */
-export const INTERIM_SPAWN_INTERVAL_SEC = 2;
-/** Fixed concurrent-enemy cap for the interim spawner. */
-export const INTERIM_SPAWN_CAP = 10;
-
-export interface InterimSpawnerState {
-  cooldownSec: number;
-  nextIsWasp: boolean;
-}
-
-export function createInterimSpawnerState(): InterimSpawnerState {
-  return { cooldownSec: INTERIM_SPAWN_INTERVAL_SEC, nextIsWasp: true };
-}
 
 function randomPointOnArenaEdge(): { x: number; y: number } {
   const cx = ARENA.width / 2;
@@ -87,37 +74,19 @@ function farEnoughFromAllPlayers(x: number, y: number, players: Iterable<PlayerS
 }
 
 /**
- * Steps the interim spawner by dtSec; spawns at most one enemy per call, once
- * its cooldown elapses and the cap isn't reached, alternating wasp/snail.
- * Spawn point: random point on the arena-edge ellipse, retried a few times to
- * land ≥MIN_SPAWN_DIST from every player (falls back to the last sampled
- * point rather than stalling forever when the arena is crowded).
+ * Picks a spawn point on the arena-edge ellipse, retried a few times to land
+ * >= ARENA.minEnemySpawnDistanceFromPlayers from every player (falls back to
+ * the last sampled point rather than stalling forever when the arena is
+ * crowded). Used by game/waves.ts's WaveDirector for every enemy it spawns.
  */
-export function stepInterimSpawner(
-  state: InterimSpawnerState,
-  dtSec: number,
-  enemies: Map<string, EnemyState>,
-  players: Iterable<PlayerState>,
-  nextId: () => string,
-): void {
-  state.cooldownSec -= dtSec;
-  if (state.cooldownSec > 0) return;
-  state.cooldownSec += INTERIM_SPAWN_INTERVAL_SEC;
-
-  if (enemies.size >= INTERIM_SPAWN_CAP) return;
-
-  const type: EnemyTypeInternal = state.nextIsWasp ? 'wasp' : 'snailSpitter';
-  state.nextIsWasp = !state.nextIsWasp;
-
+export function pickEnemySpawnPoint(players: Iterable<PlayerState>): { x: number; y: number } {
   const playersArr = Array.from(players);
   let point = randomPointOnArenaEdge();
   for (let attempt = 0; attempt < 20; attempt++) {
     point = randomPointOnArenaEdge();
     if (farEnoughFromAllPlayers(point.x, point.y, playersArr)) break;
   }
-
-  const enemy = createEnemy(nextId(), type, point.x, point.y);
-  enemies.set(enemy.id, enemy);
+  return point;
 }
 
 // ---------------------------------------------------------------------------

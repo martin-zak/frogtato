@@ -11,7 +11,11 @@
 
 import WebSocket from 'ws';
 
-const URL = 'ws://localhost:8080';
+// FROGTATO_PORT override (PLAN.md T8): lets this check target a secondary
+// server instance (e.g. 8081) instead of the default 8080, so it never
+// collides with a live playtesting dev server.
+const PORT = process.env.FROGTATO_PORT ?? '8080';
+const URL = `ws://localhost:${PORT}`;
 const DRIVE_DURATION_MS = 2000;
 
 const results = [];

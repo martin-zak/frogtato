@@ -11,10 +11,24 @@
 //   (d) a bot with debug invincible stays at full HP for 5s while enemies exist
 //   (e) downed flow: a non-invincible bot dies -> playerDowned event, snapshot
 //       downed=true, and its position stops responding to input
+//
+// DEVIATION (PLAN.md T8): enemies now only exist during the "wave" phase (T8
+// deleted T5's always-on interim spawner in favor of the wave director), so
+// this script sends `start` (from lobby) + a debug `timescale` once at the
+// top, and connects every bot *before* sending `start` so all of them join
+// during "lobby" and spawn active (non-spectator) rather than mid-wave — see
+// DESIGN §8 join rules. It also auto-`ready`s on every shop phase it sees so
+// (e)'s "eventually goes down" wait isn't stalled behind 30s (game-time) shop
+// breaks. Everything else — the assertions themselves — is unchanged.
 
 import WebSocket from 'ws';
 
-const URL = 'ws://localhost:8080';
+// FROGTATO_PORT override (PLAN.md T8): see skeleton-check.mjs.
+const PORT = process.env.FROGTATO_PORT ?? '8080';
+const URL = `ws://localhost:${PORT}`;
+// Speeds up simulated time so waves/shops cycle fast in wall-clock terms
+// without changing in-game outcomes (dt scaling affects sim, not tick rate).
+const TIMESCALE = 8;
 
 const results = [];
 let failed = false;
@@ -72,8 +86,12 @@ async function connectBot() {
     } catch {
       return;
     }
-    if (msg.type === 'snapshot') snapshots.push(msg);
-    else if (msg.type === 'event') events.push(msg.event);
+    if (msg.type === 'snapshot') {
+      snapshots.push(msg);
+      // Auto-ready on every shop phase so waits for "eventually" outcomes
+      // (e.g. (e)'s downed check) aren't stalled behind a full shop break.
+      if (msg.phase === 'shop') ws.send(JSON.stringify({ type: 'ready' }));
+    } else if (msg.type === 'event') events.push(msg.event);
   });
   ws.send(JSON.stringify({ type: 'hello' }));
   const welcome = await waitForMessage(ws, (m) => m.type === 'welcome');
@@ -115,9 +133,20 @@ function sendInputToward(ws, seqBox, fromX, fromY, toX, toY) {
 }
 
 async function main() {
-  // --- (a) stationary bot takes wasp contact damage -----------------------
+  // Connect every bot *before* `start`, while phase is still "lobby", so all
+  // three join active (non-spectator) rather than spectating a mid-wave join
+  // (DESIGN §8 join rule) — see the file header DEVIATION note.
   const botA = await connectBot();
-  await waitForMessage(botA.ws, (m) => m.type === 'snapshot' && selfIn(m, botA) !== undefined);
+  const botD = await connectBot();
+  const botE = await connectBot();
+
+  botD.ws.send(JSON.stringify({ type: 'debug', invincible: true }));
+
+  botA.ws.send(JSON.stringify({ type: 'debug', timescale: TIMESCALE }));
+  botA.ws.send(JSON.stringify({ type: 'start' }));
+
+  // --- (a) stationary bot takes wasp contact damage -----------------------
+  await waitForMessage(botA.ws, (m) => m.type === 'snapshot' && m.phase === 'wave' && selfIn(m, botA) !== undefined);
   const startSnapA = latestSnapshot(botA);
   const startHpA = selfIn(startSnapA, botA).hp;
   console.log(`bot A start HP: ${startHpA}`);
@@ -181,9 +210,6 @@ async function main() {
   botA.ws.close();
 
   // --- (d) invincible bot stays at full HP for 5s while enemies exist -----
-  const botD = await connectBot();
-  botD.ws.send(JSON.stringify({ type: 'debug', invincible: true }));
-  await waitForMessage(botD.ws, (m) => m.type === 'snapshot' && selfIn(m, botD) !== undefined);
   const startSnapD = latestSnapshot(botD);
   const maxHpD = selfIn(startSnapD, botD).maxHp;
 
@@ -198,15 +224,17 @@ async function main() {
   botD.ws.close();
 
   // --- (e) downed flow: non-invincible bot dies ----------------------------
-  const botE = await connectBot();
-  await waitForMessage(botE.ws, (m) => m.type === 'snapshot' && selfIn(m, botE) !== undefined);
-
+  // Generous timeout: with the wave director, exposure to enemy contact is
+  // bounded by a single wave's duration (players are fully healed at every
+  // wave-end), so death may take a few wave cycles to accumulate rather than
+  // one long continuous exposure window. Auto-ready-on-shop (connectBot)
+  // keeps shop breaks from wasting wall-clock time between waves.
   const downed = await waitUntil(
     () => {
       const p = selfIn(latestSnapshot(botE), botE);
       return p && p.downed ? p : undefined;
     },
-    { timeoutMs: 45000, pollMs: 200 },
+    { timeoutMs: 120000, pollMs: 200 },
   );
   check('(e) non-invincible bot eventually goes down (hp -> 0, downed=true in snapshot)', Boolean(downed));
 
