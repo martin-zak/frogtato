@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 14 14">
+  <!-- Bubble Blaster projectile, translucent, ~14px -->
+  <circle cx="7" cy="7" r="6" fill="#bfe9ff" fill-opacity="0.45" stroke="#4fb3e0" stroke-width="1.2"/>
+  <circle cx="4.8" cy="4.8" r="1.6" fill="#ffffff" fill-opacity="0.8"/>
+</svg>

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- Croak Nova shockwave ring, 64px, WHITE so it can be tinted/scaled by
+       the client as it expands and fades. Soft edge via blur filter. -->
+  <defs>
+    <filter id="soft" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2.2"/>
+    </filter>
+  </defs>
+  <circle cx="32" cy="32" r="26" fill="none" stroke="#ffffff" stroke-width="6" opacity="0.9" filter="url(#soft)"/>
+  <circle cx="32" cy="32" r="26" fill="none" stroke="#ffffff" stroke-width="1.5" opacity="0.6"/>
+</svg>

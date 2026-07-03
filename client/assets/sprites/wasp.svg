@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="32" viewBox="0 0 64 32">
+  <!-- Wasp enemy sprite sheet: 2 frames, 32x32 each, side by side.
+       Frame 0 (x=0..32):  wings UP
+       Frame 1 (x=32..64): wings DOWN
+       Alternate frames each tick for a simple wobble/flutter. -->
+
+  <!-- ===== Frame 0: wings up ===== -->
+  <g transform="translate(0,0)">
+    <!-- wings (behind body), angled up -->
+    <ellipse cx="10" cy="10" rx="8" ry="4" fill="#ffffff" fill-opacity="0.75" stroke="#000000" stroke-width="1.5" transform="rotate(-25 10 10)"/>
+    <ellipse cx="22" cy="10" rx="8" ry="4" fill="#ffffff" fill-opacity="0.75" stroke="#000000" stroke-width="1.5" transform="rotate(25 22 10)"/>
+    <!-- abdomen (striped) -->
+    <ellipse cx="16" cy="21" rx="7" ry="8" fill="#ffcc33" stroke="#000000" stroke-width="1.8"/>
+    <path d="M 9 18 L 23 18" stroke="#000000" stroke-width="2"/>
+    <path d="M 10 22 L 22 22" stroke="#000000" stroke-width="2"/>
+    <path d="M 11 26 L 21 26" stroke="#000000" stroke-width="2"/>
+    <!-- thorax/head -->
+    <circle cx="16" cy="11" r="5.5" fill="#3a3a3a" stroke="#000000" stroke-width="1.8"/>
+    <!-- eyes -->
+    <circle cx="14" cy="10" r="1.1" fill="#ffffff"/>
+    <circle cx="18" cy="10" r="1.1" fill="#ffffff"/>
+    <!-- stinger -->
+    <path d="M 16 29 L 14.5 32 L 17.5 32 Z" fill="#000000"/>
+  </g>
+
+  <!-- ===== Frame 1: wings down ===== -->
+  <g transform="translate(32,0)">
+    <ellipse cx="10" cy="14" rx="8" ry="4" fill="#ffffff" fill-opacity="0.75" stroke="#000000" stroke-width="1.5" transform="rotate(-8 10 14)"/>
+    <ellipse cx="22" cy="14" rx="8" ry="4" fill="#ffffff" fill-opacity="0.75" stroke="#000000" stroke-width="1.5" transform="rotate(8 22 14)"/>
+    <ellipse cx="16" cy="21" rx="7" ry="8" fill="#ffcc33" stroke="#000000" stroke-width="1.8"/>
+    <path d="M 9 18 L 23 18" stroke="#000000" stroke-width="2"/>
+    <path d="M 10 22 L 22 22" stroke="#000000" stroke-width="2"/>
+    <path d="M 11 26 L 21 26" stroke="#000000" stroke-width="2"/>
+    <circle cx="16" cy="11" r="5.5" fill="#3a3a3a" stroke="#000000" stroke-width="1.8"/>
+    <circle cx="14" cy="10" r="1.1" fill="#ffffff"/>
+    <circle cx="18" cy="10" r="1.1" fill="#ffffff"/>
+    <path d="M 16 29 L 14.5 32 L 17.5 32 Z" fill="#000000"/>
+  </g>
+</svg>

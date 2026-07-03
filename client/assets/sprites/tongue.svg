@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="8" height="32" viewBox="0 0 8 32">
+  <!-- Tongue Lash attack segment: 8x32, meant to be scaled/stretched
+       vertically (or rotated) by the client toward the attack target.
+       Rounded tip at the bottom (y=32 end), straight base at top (y=0,
+       anchored at the frog's mouth). -->
+  <rect x="0" y="0" width="8" height="24" fill="#ff6f91" stroke="#8a1f3d" stroke-width="1"/>
+  <path d="M 0 24 Q 0 32 4 32 Q 8 32 8 24 Z" fill="#ff6f91" stroke="#8a1f3d" stroke-width="1"/>
+  <!-- center highlight for a glossy wet look -->
+  <rect x="3" y="2" width="1.6" height="26" fill="#ffb3c6" opacity="0.7"/>
+</svg>

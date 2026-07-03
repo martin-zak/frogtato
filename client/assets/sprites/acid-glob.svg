@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12">
+  <!-- Snail's acid glob projectile, ~12px -->
+  <circle cx="6" cy="6" r="5" fill="#9be564" stroke="#4a7a1e" stroke-width="1.2"/>
+  <circle cx="4.5" cy="4.5" r="1.4" fill="#d4ffb0"/>
+</svg>

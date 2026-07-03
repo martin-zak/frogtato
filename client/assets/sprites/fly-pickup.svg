@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <!-- Fly currency pickup, ~16px -->
+  <ellipse cx="4"  cy="7" rx="4.5" ry="2.6" fill="#ffffff" fill-opacity="0.7" stroke="#7a7a7a" stroke-width="0.8" transform="rotate(-20 4 7)"/>
+  <ellipse cx="12" cy="7" rx="4.5" ry="2.6" fill="#ffffff" fill-opacity="0.7" stroke="#7a7a7a" stroke-width="0.8" transform="rotate(20 12 7)"/>
+  <ellipse cx="8" cy="9" rx="4" ry="3.2" fill="#3a2b22" stroke="#000000" stroke-width="1"/>
+  <circle cx="8" cy="5.2" r="2.6" fill="#3a2b22" stroke="#000000" stroke-width="1"/>
+  <circle cx="6.9" cy="4.7" r="0.8" fill="#e0405a"/>
+  <circle cx="9.1" cy="4.7" r="0.8" fill="#e0405a"/>
+</svg>

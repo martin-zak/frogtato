@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96">
+  <!-- Lily pad decoration, variant 2: smaller pad, notch rotated, cheap palette swap -->
+  <g transform="rotate(110 48 48) scale(0.82) translate(10.5 10.5)">
+    <path d="M 87.47 33.64 A 42 42 0 1 1 87.47 62.36 L 48 48 Z"
+          fill="#57a866" stroke="#337a3f" stroke-width="2.5" stroke-linejoin="round"/>
+    <path d="M 48 48 L 20 20 M 48 48 L 12 48 M 48 48 L 20 76 M 48 48 L 48 88 M 48 48 L 70 72"
+          stroke="#337a3f" stroke-width="1.4" opacity="0.55" fill="none"/>
+    <ellipse cx="34" cy="30" rx="10" ry="6" fill="#79c187" opacity="0.5"/>
+  </g>
+</svg>
