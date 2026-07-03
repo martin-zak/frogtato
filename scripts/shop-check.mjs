@@ -194,6 +194,28 @@ async function buy(bot, offerId, slot) {
   return result;
 }
 
+/**
+ * Sends `merge` and waits for either the resulting `merged` event (success)
+ * or a `purchaseResult` with offerId "merge" (failure) — see
+ * game/shop.ts's handleMerge and ids.ts's MERGE_OFFER_ID.
+ */
+async function merge(bot) {
+  const before = bot.events.length;
+  bot.ws.send(JSON.stringify({ type: 'merge' }));
+  const result = await waitUntil(
+    () =>
+      bot.events
+        .slice(before)
+        .find(
+          (e) =>
+            (e.type === 'merged' && e.playerId === bot.playerId) ||
+            (e.type === 'purchaseResult' && e.playerId === bot.playerId && e.offerId === 'merge'),
+        ),
+    { timeoutMs: 5000 },
+  );
+  return result;
+}
+
 /** Waits for a snapshot whose value at `getter(self)` satisfies `predicate`. */
 async function waitForSelf(bot, predicate, opts) {
   return waitUntil(() => {
@@ -230,6 +252,16 @@ async function main() {
     check(
       `buy during wave phase is rejected "wrong phase" (got ${JSON.stringify(wrongPhaseResult)})`,
       Boolean(wrongPhaseResult) && wrongPhaseResult.ok === false && wrongPhaseResult.reason === 'wrong phase',
+    );
+
+    // --- merge outside shop phase: rejected "wrong phase" (Phase 2 §3) ---
+    const mergeWrongPhaseResult = await merge(bot);
+    check(
+      `merge during wave phase is rejected "wrong phase" (got ${JSON.stringify(mergeWrongPhaseResult)})`,
+      Boolean(mergeWrongPhaseResult) &&
+        mergeWrongPhaseResult.type === 'purchaseResult' &&
+        mergeWrongPhaseResult.ok === false &&
+        mergeWrongPhaseResult.reason === 'wrong phase',
     );
 
     const shopEntered = await waitUntil(() => (latestSnapshot(bot)?.phase === 'shop' ? true : undefined), {
@@ -340,6 +372,83 @@ async function main() {
     check('snapshot shows slot 0 at level 2 after upgrade', Boolean(upgradedSelf));
     expectedFlies -= 20;
     await settleFlies('upgrade charged the level-II price of 20 flies');
+
+    // --- merge (Phase 2 §3): a dedicated bot joining mid-shop, exercised
+    //     through success + every rejection reason. Closes its connection
+    //     before the "all-ready" test below so it doesn't count toward (and
+    //     block on) allActivePlayersReady. ---
+    const mergeBot = await connectBot();
+    check('(merge) a dedicated bot joins during the shop phase', mergeBot.welcomePhase === 'shop');
+    mergeBot.ws.send(JSON.stringify({ type: 'debug', grantFlies: 1000 }));
+    await waitForSelf(mergeBot, (s) => s.flies >= 1000, { timeoutMs: 3000 });
+
+    const mergeBotStart = await waitForSelf(mergeBot, (s) => s.weapons[0] !== null, { timeoutMs: 3000 });
+    check(
+      `(merge) fresh bot starts with a single starting weapon and an empty slot 1 (got ${JSON.stringify(mergeBotStart?.weapons)})`,
+      Boolean(mergeBotStart) && mergeBotStart.weapons[0] !== null && mergeBotStart.weapons[1] === null,
+    );
+    const startingWeaponKind = mergeBotStart.weapons[0].kind;
+
+    // --- successful I+I merge: buy a duplicate of the starting weapon into
+    //     the empty slot, then merge -> slot0 level 2, slot1 null. ---
+    const dupBuyOfferId = { tongue: 'buyTongueLash', bubble: 'buyBubbleBlaster', croak: 'buyCroakNova' }[startingWeaponKind];
+    const dupBuyResult = await buy(mergeBot, dupBuyOfferId);
+    check(`(merge) buying a duplicate ${startingWeaponKind} into slot 1 succeeds (got ${JSON.stringify(dupBuyResult)})`, Boolean(dupBuyResult) && dupBuyResult.ok === true);
+    await waitForSelf(mergeBot, (s) => s.weapons[1] !== null, { timeoutMs: 3000 });
+
+    const mergeSuccess = await merge(mergeBot);
+    check(
+      `(merge) I+I merge succeeds with a "merged" event (got ${JSON.stringify(mergeSuccess)})`,
+      Boolean(mergeSuccess) && mergeSuccess.type === 'merged' && mergeSuccess.slot === 0 && mergeSuccess.newLevel === 2,
+    );
+    const mergedSelf = await waitForSelf(mergeBot, (s) => s.weapons[0]?.level === 2, { timeoutMs: 3000 });
+    check(
+      `(merge) snapshot shows slot 0 at level 2 and slot 1 empty after the merge (got ${JSON.stringify(mergedSelf?.weapons)})`,
+      Boolean(mergedSelf) && mergedSelf.weapons[0]?.level === 2 && mergedSelf.weapons[1] === null,
+    );
+
+    // --- rejection: different kinds in the two slots -> "nothing to merge" ---
+    const otherKind = startingWeaponKind === 'tongue' ? 'bubble' : 'tongue';
+    const otherBuyOfferId = { tongue: 'buyTongueLash', bubble: 'buyBubbleBlaster', croak: 'buyCroakNova' }[otherKind];
+    await buy(mergeBot, otherBuyOfferId);
+    await waitForSelf(mergeBot, (s) => s.weapons[1] !== null, { timeoutMs: 3000 });
+    const differentKindsResult = await merge(mergeBot);
+    check(
+      `(merge) different weapon kinds in the two slots rejected "nothing to merge" (got ${JSON.stringify(differentKindsResult)})`,
+      Boolean(differentKindsResult) &&
+        differentKindsResult.type === 'purchaseResult' &&
+        differentKindsResult.ok === false &&
+        differentKindsResult.reason === 'nothing to merge',
+    );
+
+    // --- rejection: same kind, different levels -> "levels differ" ---
+    mergeBot.ws.send(JSON.stringify({ type: 'debug', give: { slot: 1, weapon: startingWeaponKind, level: 1 } }));
+    await waitForSelf(mergeBot, (s) => s.weapons[1]?.kind === startingWeaponKind && s.weapons[1]?.level === 1, {
+      timeoutMs: 3000,
+    });
+    const levelsDifferResult = await merge(mergeBot);
+    check(
+      `(merge) same kind but different levels (II vs I) rejected "levels differ" (got ${JSON.stringify(levelsDifferResult)})`,
+      Boolean(levelsDifferResult) &&
+        levelsDifferResult.type === 'purchaseResult' &&
+        levelsDifferResult.ok === false &&
+        levelsDifferResult.reason === 'levels differ',
+    );
+
+    // --- rejection: same kind + level, but level III has no merge result -> "max level" ---
+    mergeBot.ws.send(JSON.stringify({ type: 'debug', give: { slot: 0, weapon: startingWeaponKind, level: 3 } }));
+    mergeBot.ws.send(JSON.stringify({ type: 'debug', give: { slot: 1, weapon: startingWeaponKind, level: 3 } }));
+    await waitForSelf(mergeBot, (s) => s.weapons[0]?.level === 3 && s.weapons[1]?.level === 3, { timeoutMs: 3000 });
+    const maxLevelResult = await merge(mergeBot);
+    check(
+      `(merge) III+III rejected "max level" (got ${JSON.stringify(maxLevelResult)})`,
+      Boolean(maxLevelResult) &&
+        maxLevelResult.type === 'purchaseResult' &&
+        maxLevelResult.ok === false &&
+        maxLevelResult.reason === 'max level',
+    );
+
+    mergeBot.ws.close();
 
     // --- all-ready still ends the shop early, with a buy having happened in between ---
     bot.ws.send(JSON.stringify({ type: 'ready' }));

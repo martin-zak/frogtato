@@ -7,9 +7,9 @@
 // mirroring the sim/*.ts step-function style so room.ts's tick loop and
 // message handlers stay thin orchestration.
 
-import { ARENA, FROG_BASE_STATS, REVIVE_HP_PCT, STARTING_WEAPON_SLOTS, type ScoreRow } from '@frogtato/shared';
+import { ARENA, REVIVE_HP_PCT, type ScoreRow } from '@frogtato/shared';
 import type { FlyState } from '../sim/flies.js';
-import type { PlayerState } from '../sim/players.js';
+import { applyClassLoadout, type PlayerState } from '../sim/players.js';
 
 /** Clamps the debug `timescale` message to the allowed 1..20 range. */
 export function clampTimescale(value: number): number {
@@ -77,32 +77,46 @@ export function allActivePlayersReady(players: Iterable<PlayerState>): boolean {
 /**
  * Full reset of one player's run state for a fresh lobby (DESIGN §2/§8:
  * "Full reset of run state on return to lobby"): weapons back to the
- * starting loadout, stats/hp/flies reset, scoreboard counters cleared, and
- * spectator status cleared (the new run's lobby treats everyone connected as
- * an active joiner, per the lobby join rule).
+ * class-appropriate starting loadout, stats/hp/flies reset, scoreboard
+ * counters cleared, and spectator status cleared (the new run's lobby treats
+ * everyone connected as an active joiner, per the lobby join rule).
+ *
+ * Class + name persist across rematch (Phase 2 §5): `player.class` and
+ * `player.name` are deliberately left untouched here — applyClassLoadout
+ * re-derives stats/hp/weapons from the player's *current* class (their last
+ * pick), it doesn't reset the class itself.
  */
 export function resetPlayerForNewRun(player: PlayerState): void {
   player.x = ARENA.width / 2;
   player.y = ARENA.height / 2;
-  player.hp = FROG_BASE_STATS.maxHp;
-  player.maxHp = FROG_BASE_STATS.maxHp;
   player.flies = 0;
   player.downed = false;
   player.spectator = false;
-  player.weapons = [...STARTING_WEAPON_SLOTS];
-  player.weaponCooldowns = STARTING_WEAPON_SLOTS.map(() => 0);
-  player.stats = {
-    damagePct: FROG_BASE_STATS.damagePct,
-    moveSpeed: FROG_BASE_STATS.moveSpeed,
-    maxHp: FROG_BASE_STATS.maxHp,
-    armor: FROG_BASE_STATS.armor,
-    regen: FROG_BASE_STATS.regen,
-    pickupRadius: FROG_BASE_STATS.pickupRadius,
-  };
+  applyClassLoadout(player, player.class);
   player.ready = false;
   player.killCount = 0;
   player.damageDealt = 0;
   player.fliesCollected = 0;
+  player.regenAccumSec = 0;
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2 §2: regen (+regen HP per 5s during wave phase only, capped at maxHp)
+// ---------------------------------------------------------------------------
+
+const REGEN_INTERVAL_SEC = 5;
+
+/** Steps every active player's regen accumulator; called only while phase === 'wave'. */
+export function stepRegen(players: Iterable<PlayerState>, dtSec: number): void {
+  for (const p of players) {
+    if (p.downed || p.spectator || !p.connected) continue;
+    if (p.stats.regen <= 0) continue;
+    p.regenAccumSec += dtSec;
+    while (p.regenAccumSec >= REGEN_INTERVAL_SEC) {
+      p.regenAccumSec -= REGEN_INTERVAL_SEC;
+      p.hp = Math.min(p.maxHp, p.hp + p.stats.regen);
+    }
+  }
 }
 
 /**
@@ -135,6 +149,7 @@ export function vacuumFliesToNearestPlayer(flies: Map<string, FlyState>, players
 export function buildScoreboard(players: Iterable<PlayerState>): ScoreRow[] {
   return Array.from(players, (p) => ({
     playerId: p.id,
+    ...(p.name !== undefined ? { name: p.name } : {}),
     kills: p.killCount,
     damageDealt: p.damageDealt,
     fliesCollected: p.fliesCollected,

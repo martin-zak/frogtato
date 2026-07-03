@@ -50,8 +50,10 @@ export function damagePlayer(
 ): DamagePlayerResult {
   if (player.downed || player.spectator || !player.connected) return { applied: false, newlyDowned: false };
 
-  player.hp = Math.max(0, player.hp - amount);
-  emit({ type: 'playerHit', playerId: player.id, amount });
+  // Phase 2 §2: armor is a flat reduction per hit, min 1 damage taken.
+  const mitigated = Math.max(1, amount - player.stats.armor);
+  player.hp = Math.max(0, player.hp - mitigated);
+  emit({ type: 'playerHit', playerId: player.id, amount: mitigated });
 
   if (player.hp <= 0) {
     player.downed = true;

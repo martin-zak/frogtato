@@ -16,6 +16,8 @@
 
 import {
   FROG_BASE_STATS,
+  MERGE_OFFER_ID,
+  mergeResultLevel,
   STAT_SHOP_OFFERS,
   WEAPON_SHOP_OFFERS,
   WEAPON_UPGRADE_PRICES,
@@ -210,5 +212,48 @@ function applyStatEffect(player: PlayerState, effect: (typeof STAT_SHOP_OFFERS)[
       // fixed absolute amount per purchase rather than scaling the current value.
       player.stats.moveSpeed += FROG_BASE_STATS.moveSpeed * effect.amount;
       break;
+    case 'armor':
+      player.stats.armor += effect.amount;
+      break;
+    case 'regen':
+      player.stats.regen += effect.amount;
+      break;
+    case 'pickupRadius':
+      player.stats.pickupRadius += effect.amount;
+      break;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2 §3: weapon merge (shop-only, free, validated like any purchase)
+// ---------------------------------------------------------------------------
+
+type MergedEvent = Extract<GameEvent, { type: 'merged' }>;
+
+/**
+ * Validates and (on success) applies a `merge` message. Success emits a
+ * `merged` event; failure emits `purchaseResult` with offerId MERGE_OFFER_ID
+ * ("merge") — same shape as every other shop rejection, per DESIGN-PHASE2.md
+ * §3 / ids.ts's MERGE_OFFER_ID doc comment. Reason strings are part of the
+ * client<->server contract (the client P5 task mirrors them exactly):
+ *   "wrong phase"    — not in the shop phase (or spectating)
+ *   "nothing to merge" — slots aren't both occupied with the same weapon kind
+ *   "levels differ"  — same kind, but slot 0 and slot 1 are different levels
+ *   "max level"      — same kind+level, but that level has no merge result (Lv III)
+ */
+export function handleMerge(phase: Phase, player: PlayerState): PurchaseResultEvent | MergedEvent {
+  if (phase !== 'shop' || player.spectator) return fail(player.id, MERGE_OFFER_ID, 'wrong phase');
+
+  const [a, b] = player.weapons;
+  if (!a || !b || a.weapon !== b.weapon) return fail(player.id, MERGE_OFFER_ID, 'nothing to merge');
+  if (a.level !== b.level) return fail(player.id, MERGE_OFFER_ID, 'levels differ');
+
+  const newLevel = mergeResultLevel(a.level);
+  if (newLevel === null) return fail(player.id, MERGE_OFFER_ID, 'max level');
+
+  player.weapons[0] = { weapon: a.weapon, level: newLevel };
+  player.weapons[1] = null;
+  player.weaponCooldowns = player.weapons.map(() => 0);
+
+  return { type: 'merged', playerId: player.id, slot: 0, newLevel };
 }

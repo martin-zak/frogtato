@@ -161,6 +161,15 @@ async function main() {
   check('(a) stationary bot HP decreases over time (wasp contact)', Boolean(tookDamage));
   if (tookDamage) console.log(`bot A HP after contact: ${tookDamage.hp}`);
 
+  // (a)'s evidence (contact damage happens at all) is captured above; go
+  // invincible for the rest of botA's scenarios (b)/(c), which are about
+  // enemy-kill/fly-collection mechanics, not combat survival. DEVIATION
+  // (Phase 2 P1): the lobby default class is now treefrog (maxHp 16, down
+  // from v0.1's flat 20), so a stationary non-invincible bot can go downed
+  // mid-(b)/(c) under ordinary wasp contact — this used to have enough
+  // margin at maxHp 20 to reliably survive that window.
+  botA.ws.send(JSON.stringify({ type: 'debug', invincible: true }));
+
   // --- (b) debug-kill a nearby enemy -> flies appear -----------------------
   const snapBeforeKill = latestSnapshot(botA);
   const flyCountBefore = snapBeforeKill.flies.length;
@@ -244,12 +253,18 @@ async function main() {
   if (downed) {
     const posBeforeInput = { x: downed.x, y: downed.y };
     const seqBoxE = { seq: 0 };
-    for (let i = 0; i < 20; i++) {
+    // Short, tight window (DEVIATION: shortened from 20 ticks + 200ms to 6
+    // ticks + 80ms): SCOREBOARD_DURATION_SEC/TIMESCALE only gives ~1.25s of
+    // real time before this downed player gets teleported back to the arena
+    // center by the next run's reset — a longer measurement window risked
+    // racing that reset under system load and misreading the reset teleport
+    // as "input moved the downed player".
+    for (let i = 0; i < 6; i++) {
       seqBoxE.seq += 1;
       botE.ws.send(JSON.stringify({ type: 'input', seq: seqBoxE.seq, up: true, down: false, left: true, right: false }));
       await sleep(1000 / 30);
     }
-    await sleep(200);
+    await sleep(80);
     const posAfterInput = selfIn(latestSnapshot(botE), botE);
     const moved = Math.hypot(posAfterInput.x - posBeforeInput.x, posAfterInput.y - posBeforeInput.y);
     check(`(e) downed player's position ignores input (moved ${moved.toFixed(2)}px)`, moved < 0.01);

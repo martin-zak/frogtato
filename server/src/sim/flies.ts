@@ -2,7 +2,7 @@
 // position, magnet toward a living player once within pickup radius, and are
 // collected on contact (each fly entity = +1 to that player's fly count).
 
-import { FROG_BASE_STATS, type FlySnap } from '@frogtato/shared';
+import type { FlySnap } from '@frogtato/shared';
 import type { PlayerState } from './players.js';
 
 export interface FlyState {
@@ -53,7 +53,7 @@ export function stepFlies(flies: Map<string, FlyState>, players: Iterable<Player
     let bestDist = Infinity;
     for (const p of livingPlayers) {
       const d = Math.hypot(p.x - fly.x, p.y - fly.y);
-      if (d <= FROG_BASE_STATS.pickupRadius && d < bestDist) {
+      if (d <= p.stats.pickupRadius && d < bestDist) {
         bestDist = d;
         target = p;
       }

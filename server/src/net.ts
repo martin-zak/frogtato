@@ -161,6 +161,9 @@ export function startServer(): void {
         case 'start':
         case 'buy':
         case 'ready':
+        case 'pickClass':
+        case 'setName':
+        case 'merge':
           room.handleClientMsg(conn.playerId, msg);
           break;
         case 'debug':

@@ -24,7 +24,16 @@ import {
   type Phase,
   type ServerMsg,
 } from '@frogtato/shared';
-import { applyInput, createPlayer, setWeaponSlot, stepPlayerMovement, toPlayerSnap, type PlayerState } from './sim/players.js';
+import {
+  applyClassLoadout,
+  applyInput,
+  createPlayer,
+  sanitizeName,
+  setWeaponSlot,
+  stepPlayerMovement,
+  toPlayerSnap,
+  type PlayerState,
+} from './sim/players.js';
 import * as combat from './sim/combat.js';
 import { ENEMY_KIND_BY_TYPE, stepEnemyAi, toEnemySnap, type EnemyState } from './sim/enemies.js';
 import { spawnFliesAt, stepFlies, toFlySnap, type FlyState } from './sim/flies.js';
@@ -37,7 +46,7 @@ import {
 } from './sim/projectiles.js';
 import { stepPlayerWeapons } from './sim/weapons.js';
 import { createWaveDirectorState, resetWaveDirectorState, stepWaveDirector, type WaveDirectorState } from './game/waves.js';
-import { handleBuy, resetShopCounts } from './game/shop.js';
+import { handleBuy, handleMerge, resetShopCounts } from './game/shop.js';
 import {
   activateSpectators,
   allActivePlayersDowned,
@@ -48,6 +57,7 @@ import {
   resetPlayerForNewRun,
   resetReadyFlags,
   reviveDownedPlayers,
+  stepRegen,
   vacuumFliesToNearestPlayer,
 } from './game/phases.js';
 
@@ -218,6 +228,25 @@ export class Room {
         break;
       case 'buy':
         this.emit(handleBuy(this.phase, player, msg));
+        break;
+      case 'pickClass':
+        // Phase 2 §1: class pick is lobby-only. Silently ignored (no state
+        // change, no event) outside the lobby — mirrors how `start` is
+        // ignored outside the lobby above.
+        if (this.phase === 'lobby') {
+          applyClassLoadout(player, msg.class);
+          this.emit({ type: 'classPicked', playerId: player.id, class: player.class });
+        }
+        break;
+      case 'setName':
+        // Phase 2 §5: name entry is allowed in the lobby or the shop (both
+        // are "between waves" moments a player might want to set/change it).
+        if (this.phase === 'lobby' || this.phase === 'shop') {
+          player.name = sanitizeName(msg.name);
+        }
+        break;
+      case 'merge':
+        this.emit(handleMerge(this.phase, player));
         break;
       default:
         break;
@@ -416,6 +445,9 @@ export class Room {
     this.stepEnemies(dt);
     this.stepWeapons(dt);
     this.stepProjectiles(dt);
+    // Phase 2 §2: regen only ticks during wave phase (this method is only
+    // called while this.phase === 'wave').
+    stepRegen(this.players.values(), dt);
 
     if (allActivePlayersDowned(this.players.values())) {
       this.triggerGameOver();

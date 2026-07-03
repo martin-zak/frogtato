@@ -5,8 +5,11 @@
 
 import {
   ARENA,
+  classBaseStats,
   DEFAULT_CLASS,
   FROG_BASE_STATS,
+  FROG_CLASSES,
+  MAX_NAME_LENGTH,
   STARTING_WEAPON_SLOTS,
   type ClientMsg,
   type FrogClassId,
@@ -50,10 +53,13 @@ export interface PlayerState {
   id: string;
   token: string;
   colorIndex: number;
-  /** Phase 2 P1 mechanical addition: defaults to DEFAULT_CLASS. Applying the
-   * class stat-modifier bundle on spawn/reset is P2's job (server: classes &
-   * stats) — this field is wired through as a plain default for now. */
+  /** Defaults to DEFAULT_CLASS on first join; changeable in the lobby via
+   * `pickClass` (P2 §1). classBaseStats() + the class's starting weapon are
+   * applied on join/pick/run-reset via applyClassLoadout below. */
   class: FrogClassId;
+  /** Lobby `setName` (DESIGN-PHASE2.md §5); undefined until a player sets one.
+   * Sanitized (trimmed, control chars stripped, MAX_NAME_LENGTH-capped) server-side. */
+  name: string | undefined;
   x: number;
   y: number;
   hp: number;
@@ -69,8 +75,9 @@ export interface PlayerState {
   weapons: (WeaponSlot | null)[];
   /** Per-slot remaining cooldown (sec), parallel array to `weapons`. T6. */
   weaponCooldowns: number[];
-  /** armor/regen/pickupRadius are Phase 2 P1 mechanical additions (default to
-   * FROG_BASE_STATS); wiring them into the damage/heal/fly paths is P2's job. */
+  /** armor/regen/pickupRadius (Phase 2 §2): armor is a flat damage reduction
+   * applied in combat.ts's damagePlayer; regen ticks in game/phases.ts's
+   * stepRegen (wave phase only); pickupRadius is read by sim/flies.ts. */
   stats: { damagePct: number; moveSpeed: number; maxHp: number; armor: number; regen: number; pickupRadius: number };
   ready: boolean;
   input: PlayerInputState;
@@ -78,14 +85,18 @@ export interface PlayerState {
   killCount: number;
   damageDealt: number;
   fliesCollected: number;
+  /** Regen accumulator (Phase 2 §2): seconds accrued toward the next +regen
+   * HP tick (every 5s during wave phase). Reset on run reset. */
+  regenAccumSec: number;
 }
 
 export function createPlayer(id: string, colorIndex: number, token: string): PlayerState {
-  return {
+  const player: PlayerState = {
     id,
     token,
     colorIndex,
     class: DEFAULT_CLASS,
+    name: undefined,
     x: ARENA.width / 2,
     y: ARENA.height / 2,
     hp: FROG_BASE_STATS.maxHp,
@@ -111,7 +122,51 @@ export function createPlayer(id: string, colorIndex: number, token: string): Pla
     killCount: 0,
     damageDealt: 0,
     fliesCollected: 0,
+    regenAccumSec: 0,
   };
+  // First join uses DEFAULT_CLASS, but still routes through applyClassLoadout
+  // so the starting weapon/stat-mod bundle logic has exactly one implementation
+  // (P2 task brief: "class starting weapons also apply on FIRST join").
+  applyClassLoadout(player, DEFAULT_CLASS);
+  return player;
+}
+
+/**
+ * Applies a class's stat-modifier bundle (classBaseStats) + starting weapon
+ * to a player, in place. Used on first join (DEFAULT_CLASS), on `pickClass`
+ * in the lobby, and on every full run reset (rematch keeps the player's last
+ * class — Phase 2 §5). Resets HP to full at the new maxHp, replaces both
+ * weapon slots with [starting weapon Lv1, null], and zeroes cooldowns.
+ */
+export function applyClassLoadout(player: PlayerState, classId: FrogClassId): void {
+  player.class = classId;
+  const effective = classBaseStats(classId);
+  player.stats = {
+    damagePct: effective.damagePct,
+    moveSpeed: effective.moveSpeed,
+    maxHp: effective.maxHp,
+    armor: effective.armor,
+    regen: effective.regen,
+    pickupRadius: effective.pickupRadius,
+  };
+  player.maxHp = effective.maxHp;
+  player.hp = effective.maxHp;
+  const startingWeapon = FROG_CLASSES[classId].startingWeapon;
+  player.weapons = [{ weapon: startingWeapon, level: 1 }, null];
+  player.weaponCooldowns = player.weapons.map(() => 0);
+}
+
+/**
+ * Sanitizes a client-supplied lobby/shop name (Phase 2 §5): strips ASCII
+ * control chars (including DEL), trims surrounding whitespace, and caps at
+ * MAX_NAME_LENGTH. Returns undefined for an empty result (treated the same
+ * as "never set a name").
+ */
+export function sanitizeName(raw: string): string | undefined {
+  // eslint-disable-next-line no-control-regex -- intentional: stripping control chars.
+  const stripped = raw.replace(/[\x00-\x1f\x7f]/g, '');
+  const trimmed = stripped.trim().slice(0, MAX_NAME_LENGTH);
+  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 /** Applies a client `input` message, ignoring it if its seq is stale (<= last applied). */
@@ -170,6 +225,7 @@ export function setWeaponSlot(player: PlayerState, slot: number, kind: WeaponKin
 export function toPlayerSnap(player: PlayerState): PlayerSnap {
   return {
     id: player.id,
+    ...(player.name !== undefined ? { name: player.name } : {}),
     color: player.colorIndex,
     class: player.class,
     x: player.x,
