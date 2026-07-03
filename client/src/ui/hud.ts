@@ -4,7 +4,7 @@
 // (see hudMath.ts for the pure math this leans on).
 
 import Phaser from "phaser";
-import { WEAPON_DEFS, WEAPON_SLOT_COUNT } from "@frogtato/shared";
+import { WEAPON_DEFS, WEAPON_SLOT_COUNT, FROG_CLASSES } from "@frogtato/shared";
 import type { WeaponKind, WeaponType, WeaponLevel, PlayerSnap } from "@frogtato/shared";
 import type { NetClient } from "../net.js";
 import { computeRemainingSec, formatCountdown, cooldownSweepFraction } from "./hudMath.js";
@@ -56,6 +56,9 @@ export class Hud {
   private hpBarBg: Phaser.GameObjects.Rectangle;
   private hpBarFill: Phaser.GameObjects.Rectangle;
   private hpText: Phaser.GameObjects.Text;
+  /** Own class display-name, shown just above the HP bar (Phase 2 §1). */
+  private classText: Phaser.GameObjects.Text;
+  private lastClassShown: string | null = null;
 
   private flyText: Phaser.GameObjects.Text;
   /** Last-seen own fly count, to detect increases and trigger the pop tween
@@ -122,6 +125,16 @@ export class Hud {
       .setOrigin(0.5)
       .setScrollFactor(0)
       .setDepth(DEPTH + 2);
+
+    this.classText = scene.add
+      .text(HP_BAR_MARGIN + HP_BAR_WIDTH, hpY - 22, "", {
+        fontFamily: "sans-serif",
+        fontSize: "13px",
+        color: "#a5d6a7",
+      })
+      .setOrigin(1, 0)
+      .setScrollFactor(0)
+      .setDepth(DEPTH);
 
     this.flyText = scene.add
       .text(HP_BAR_MARGIN, hpY - 22, "0 🪰", {
@@ -194,8 +207,16 @@ export class Hud {
 
     const own: PlayerSnap | undefined = snapshot.players.find((p) => p.id === this.net.playerId);
     this.updateHp(own);
+    this.updateClass(own);
     this.updateFlies(own);
     this.updateSlots(own);
+  }
+
+  private updateClass(own: PlayerSnap | undefined): void {
+    const classId = own?.class ?? null;
+    if (classId === this.lastClassShown) return;
+    this.lastClassShown = classId;
+    this.classText.setText(classId ? FROG_CLASSES[classId].displayName : "");
   }
 
   private updateHp(own: PlayerSnap | undefined): void {
@@ -291,6 +312,7 @@ export class Hud {
     this.hpBarBg.destroy();
     this.hpBarFill.destroy();
     this.hpText.destroy();
+    this.classText.destroy();
     this.flyText.destroy();
     this.volumeButton.destroy();
     for (const ui of this.slots) {

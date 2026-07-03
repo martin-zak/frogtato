@@ -11,6 +11,7 @@ import type { Phase, ScoreRow } from "@frogtato/shared";
 import type { NetClient } from "../net.js";
 import { getLastEndScreenResult } from "../ui/endScreenStore.js";
 import { routeToPhase } from "../ui/phaseRouter.js";
+import { displayName } from "../ui/nameField.js";
 
 function colorHexFor(colorIndex: number): number {
   const name = PLAYER_COLOR_ORDER[colorIndex % PLAYER_COLOR_ORDER.length];
@@ -111,7 +112,7 @@ export class GameOverScene extends Phaser.Scene {
       const swatchColor = colorIndex !== undefined ? colorHexFor(colorIndex) : 0x616161;
 
       const swatch = this.add.rectangle(centerX - 190, y, 16, 16, swatchColor);
-      const name = (row.name ?? row.playerId).slice(0, 12).padEnd(12, " ");
+      const name = displayName(row, i).slice(0, 12).padEnd(12, " ");
       const line = this.add
         .text(
           centerX - 170,
