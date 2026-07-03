@@ -11,7 +11,8 @@
     "dev": "concurrently -n server,client -c blue,green \"npm run dev --workspace server\" \"npm run dev --workspace client\"",
     "build": "npm run build --workspaces --if-present",
     "typecheck": "tsc -b",
-    "check:skeleton": "node scripts/skeleton-check.mjs"
+    "check:skeleton": "node scripts/skeleton-check.mjs",
+    "check:combat": "node scripts/combat-check.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",

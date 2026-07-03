@@ -91,7 +91,12 @@ export function startServer(): void {
         case 'start':
         case 'buy':
         case 'ready':
+          room.handleClientMsg(conn.playerId, msg);
+          break;
         case 'debug':
+          // Dev-only escape hatch for headless test scripts (PLAN.md T5/T6/T8/T9).
+          // Ignored entirely in production, at the routing layer.
+          if (process.env.NODE_ENV === 'production') break;
           room.handleClientMsg(conn.playerId, msg);
           break;
         default:

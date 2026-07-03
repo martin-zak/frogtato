@@ -2,20 +2,42 @@
 // in v0.1). Owns the player set, the fixed-timestep sim loop, and snapshot
 // broadcasting. Phase is hardcoded to "wave" for T3 — the phase machine (lobby/shop/
 // scoreboard transitions) is T8's job; this just needs frogs to move.
+//
+// T5 adds enemies, projectiles, flies and their per-tick simulation, wired in
+// here as the glue between the standalone sim/*.ts modules (each of which stays
+// decoupled from the others where possible — see module doc-comments).
 
 import {
+  ENEMY_DEFS,
   MAX_PLAYERS,
   PLAYER_COLOR_ORDER,
   SIM_HZ,
   SNAPSHOT_HZ,
+  makeIdFactory,
+  type ClientDebugMsg,
   type ClientMsg,
-  type EnemySnap,
-  type FlySnap,
+  type GameEvent,
   type Phase,
-  type ProjectileSnap,
   type ServerMsg,
 } from '@frogtato/shared';
 import { applyInput, createPlayer, stepPlayerMovement, toPlayerSnap, type PlayerState } from './sim/players.js';
+import * as combat from './sim/combat.js';
+import {
+  createInterimSpawnerState,
+  ENEMY_KIND_BY_TYPE,
+  stepEnemyAi,
+  stepInterimSpawner,
+  toEnemySnap,
+  type EnemyState,
+} from './sim/enemies.js';
+import { spawnFliesAt, stepFlies, toFlySnap, type FlyState } from './sim/flies.js';
+import {
+  circlesOverlap,
+  isOutsideArena,
+  stepProjectile,
+  toProjectileSnap,
+  type ProjectileState,
+} from './sim/projectiles.js';
 
 export interface RoomCallbacks {
   broadcast(msg: ServerMsg): void;
@@ -42,6 +64,17 @@ export class Room {
   readonly phase: Phase = 'wave';
 
   private players = new Map<string, PlayerState>();
+  private enemies = new Map<string, EnemyState>();
+  private projectiles = new Map<string, ProjectileState>();
+  private flies = new Map<string, FlyState>();
+  private spawner = createInterimSpawnerState();
+  // Debug-only (T5): NODE_ENV gate lives at the message-routing layer (net.ts).
+  private invinciblePlayers = new Set<string>();
+
+  private nextEnemyId = makeIdFactory('enemy');
+  private nextProjectileId = makeIdFactory('projectile');
+  private nextFlyId = makeIdFactory('fly');
+
   private tick = 0;
   private accumulatorSec = 0;
   private snapshotAccumulatorTicks = 0;
@@ -83,12 +116,45 @@ export class Room {
       case 'input':
         applyInput(player, msg);
         break;
-      // "start" / "buy" / "ready" / "debug": no phase machine, shop, or debug hooks
-      // exist yet (T8/T9). Valid-but-not-yet-implemented messages are ignored quietly
-      // rather than treated as protocol errors.
+      case 'debug':
+        // NODE_ENV gating happens in net.ts before this is ever called.
+        this.handleDebugMsg(player, msg);
+        break;
+      // "start" / "buy" / "ready": no phase machine or shop exist yet (T8/T9).
+      // Valid-but-not-yet-implemented messages are ignored quietly rather than
+      // treated as protocol errors.
       default:
         break;
     }
+  }
+
+  private emit(event: GameEvent): void {
+    this.callbacks.broadcast({ type: 'event', event });
+  }
+
+  private handleDebugMsg(player: PlayerState, msg: ClientDebugMsg): void {
+    if (msg.kill !== undefined) this.debugKillEnemy(msg.kill);
+    if (msg.grantFlies !== undefined) player.flies += msg.grantFlies;
+    if (msg.invincible !== undefined) {
+      if (msg.invincible) this.invinciblePlayers.add(player.id);
+      else this.invinciblePlayers.delete(player.id);
+    }
+    if (msg.give !== undefined) console.warn('[frogtato] debug "give" not implemented until T6');
+    if (msg.timescale !== undefined) console.warn('[frogtato] debug "timescale" not implemented until T8');
+  }
+
+  private debugKillEnemy(enemyId: string): void {
+    const enemy = this.enemies.get(enemyId);
+    if (!enemy) return;
+    const died = combat.damageEnemy(
+      enemy,
+      ENEMY_KIND_BY_TYPE[enemy.type],
+      ENEMY_DEFS[enemy.type].flyDrop,
+      Infinity,
+      (event) => this.emit(event),
+      (x, y, count) => spawnFliesAt(this.nextFlyId, x, y, count, this.flies),
+    );
+    if (died) this.enemies.delete(enemyId);
   }
 
   start(): void {
@@ -120,6 +186,11 @@ export class Room {
       stepPlayerMovement(player, FIXED_DT_SEC);
     }
 
+    stepInterimSpawner(this.spawner, FIXED_DT_SEC, this.enemies, this.players.values(), this.nextEnemyId);
+    this.stepEnemies();
+    this.stepProjectiles();
+    stepFlies(this.flies, this.players.values(), FIXED_DT_SEC);
+
     this.snapshotAccumulatorTicks += 1;
     if (this.snapshotAccumulatorTicks >= TICKS_PER_SNAPSHOT) {
       this.snapshotAccumulatorTicks -= TICKS_PER_SNAPSHOT;
@@ -127,19 +198,55 @@ export class Room {
     }
   }
 
+  private stepEnemies(): void {
+    for (const enemy of this.enemies.values()) {
+      stepEnemyAi(enemy, {
+        players: this.players.values(),
+        dtSec: FIXED_DT_SEC,
+        onContactDamage: (_wasp, target) => {
+          if (this.invinciblePlayers.has(target.id)) return;
+          combat.damagePlayer(target, ENEMY_DEFS.wasp.contactDamage, (event) => this.emit(event));
+        },
+        spawnProjectile: (projectile) => this.projectiles.set(projectile.id, projectile),
+        nextProjectileId: this.nextProjectileId,
+      });
+    }
+  }
+
+  private stepProjectiles(): void {
+    for (const projectile of Array.from(this.projectiles.values())) {
+      stepProjectile(projectile, FIXED_DT_SEC);
+
+      if (isOutsideArena(projectile.x, projectile.y)) {
+        this.projectiles.delete(projectile.id);
+        continue;
+      }
+
+      // T5 only implements enemy-sourced projectiles hitting players; T6 adds
+      // the player-sourced (bubble) branch hitting enemies alongside this.
+      if (projectile.source === 'enemy') {
+        for (const player of this.players.values()) {
+          if (player.downed || player.spectator || this.invinciblePlayers.has(player.id)) continue;
+          if (!circlesOverlap(projectile.x, projectile.y, projectile.radius, player.x, player.y, combat.PLAYER_RADIUS)) {
+            continue;
+          }
+          combat.damagePlayer(player, projectile.damage, (event) => this.emit(event));
+          this.projectiles.delete(projectile.id);
+          break;
+        }
+      }
+    }
+  }
+
   private broadcastSnapshot(): void {
-    // Enemies/projectiles/flies don't exist until T5 — always empty for now.
-    const enemies: EnemySnap[] = [];
-    const projectiles: ProjectileSnap[] = [];
-    const flies: FlySnap[] = [];
     const msg: ServerMsg = {
       type: 'snapshot',
       tick: this.tick,
       phase: this.phase,
       players: Array.from(this.players.values(), toPlayerSnap),
-      enemies,
-      projectiles,
-      flies,
+      enemies: Array.from(this.enemies.values(), toEnemySnap),
+      projectiles: Array.from(this.projectiles.values(), toProjectileSnap),
+      flies: Array.from(this.flies.values(), toFlySnap),
     };
     this.callbacks.broadcast(msg);
   }
