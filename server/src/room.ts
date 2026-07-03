@@ -36,6 +36,7 @@ import {
 } from './sim/projectiles.js';
 import { stepPlayerWeapons } from './sim/weapons.js';
 import { createWaveDirectorState, resetWaveDirectorState, stepWaveDirector, type WaveDirectorState } from './game/waves.js';
+import { handleBuy, resetShopCounts } from './game/shop.js';
 import {
   activateSpectators,
   allActivePlayersDowned,
@@ -131,6 +132,7 @@ export class Room {
   removePlayer(id: string): void {
     this.players.delete(id);
     this.invinciblePlayers.delete(id);
+    resetShopCounts(id);
   }
 
   handleClientMsg(playerId: string, msg: ClientMsg): void {
@@ -150,8 +152,9 @@ export class Room {
         // NODE_ENV gating happens in net.ts before this is ever called.
         this.handleDebugMsg(player, msg);
         break;
-      // "buy": no shop purchase logic exists yet (T9). Ignored quietly rather
-      // than treated as a protocol error.
+      case 'buy':
+        this.emit(handleBuy(this.phase, player, msg));
+        break;
       default:
         break;
     }
@@ -215,7 +218,10 @@ export class Room {
 
   /** `start` from lobby: full reset, then begin wave 1. */
   private beginRun(): void {
-    for (const player of this.players.values()) resetPlayerForNewRun(player);
+    for (const player of this.players.values()) {
+      resetPlayerForNewRun(player);
+      resetShopCounts(player.id);
+    }
     this.enemies.clear();
     this.projectiles.clear();
     this.flies.clear();
@@ -280,7 +286,10 @@ export class Room {
   /** Scoreboard timer elapsed: activate any remaining spectators, full reset, back to lobby. */
   private endScoreboard(): void {
     activateSpectators(this.players.values());
-    for (const player of this.players.values()) resetPlayerForNewRun(player);
+    for (const player of this.players.values()) {
+      resetPlayerForNewRun(player);
+      resetShopCounts(player.id);
+    }
     this.wave = 0;
     this.phase = 'lobby';
     this.phaseRemainingSec = undefined;
