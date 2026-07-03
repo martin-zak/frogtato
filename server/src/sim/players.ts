@@ -5,9 +5,11 @@
 
 import {
   ARENA,
+  DEFAULT_CLASS,
   FROG_BASE_STATS,
   STARTING_WEAPON_SLOTS,
   type ClientMsg,
+  type FrogClassId,
   type PlayerSnap,
   type WeaponKind,
   type WeaponLevel,
@@ -48,6 +50,10 @@ export interface PlayerState {
   id: string;
   token: string;
   colorIndex: number;
+  /** Phase 2 P1 mechanical addition: defaults to DEFAULT_CLASS. Applying the
+   * class stat-modifier bundle on spawn/reset is P2's job (server: classes &
+   * stats) — this field is wired through as a plain default for now. */
+  class: FrogClassId;
   x: number;
   y: number;
   hp: number;
@@ -63,7 +69,9 @@ export interface PlayerState {
   weapons: (WeaponSlot | null)[];
   /** Per-slot remaining cooldown (sec), parallel array to `weapons`. T6. */
   weaponCooldowns: number[];
-  stats: { damagePct: number; moveSpeed: number; maxHp: number };
+  /** armor/regen/pickupRadius are Phase 2 P1 mechanical additions (default to
+   * FROG_BASE_STATS); wiring them into the damage/heal/fly paths is P2's job. */
+  stats: { damagePct: number; moveSpeed: number; maxHp: number; armor: number; regen: number; pickupRadius: number };
   ready: boolean;
   input: PlayerInputState;
   /** Run-lifetime scoreboard counters (DESIGN §8: 10s end-of-run scoreboard). Reset each new run. */
@@ -77,6 +85,7 @@ export function createPlayer(id: string, colorIndex: number, token: string): Pla
     id,
     token,
     colorIndex,
+    class: DEFAULT_CLASS,
     x: ARENA.width / 2,
     y: ARENA.height / 2,
     hp: FROG_BASE_STATS.maxHp,
@@ -93,6 +102,9 @@ export function createPlayer(id: string, colorIndex: number, token: string): Pla
       damagePct: FROG_BASE_STATS.damagePct,
       moveSpeed: FROG_BASE_STATS.moveSpeed,
       maxHp: FROG_BASE_STATS.maxHp,
+      armor: FROG_BASE_STATS.armor,
+      regen: FROG_BASE_STATS.regen,
+      pickupRadius: FROG_BASE_STATS.pickupRadius,
     },
     ready: false,
     input: { seq: -1, up: false, down: false, left: false, right: false },
@@ -159,6 +171,7 @@ export function toPlayerSnap(player: PlayerState): PlayerSnap {
   return {
     id: player.id,
     color: player.colorIndex,
+    class: player.class,
     x: player.x,
     y: player.y,
     hp: player.hp,

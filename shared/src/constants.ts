@@ -15,6 +15,10 @@ export interface FrogBaseStats {
   readonly moveSpeed: number; // px/s
   readonly damagePct: number; // additive multiplier bonus, 0 = +0%
   readonly pickupRadius: number; // px
+  /** Flat damage reduction per hit, min 1 damage taken (Phase 2 §2). */
+  readonly armor: number;
+  /** HP regenerated per 5s during waves (Phase 2 §2). */
+  readonly regen: number;
 }
 
 export const FROG_BASE_STATS: FrogBaseStats = {
@@ -22,7 +26,93 @@ export const FROG_BASE_STATS: FrogBaseStats = {
   moveSpeed: 220,
   damagePct: 0,
   pickupRadius: 60,
+  armor: 0,
+  regen: 0,
 };
+
+// ---------------------------------------------------------------------------
+// Phase 2 §1 Frog Classes
+// ---------------------------------------------------------------------------
+
+export type FrogClassId = 'bullfrog' | 'treefrog' | 'dartfrog';
+
+/**
+ * Stat-modifier bundle applied on top of FROG_BASE_STATS. Units, expressed
+ * uniformly:
+ *   - maxHp / armor / pickupRadius: flat deltas (added to the base value)
+ *   - moveSpeedPct / damagePct: additive % deltas (0.15 = +15%); moveSpeedPct
+ *     is applied multiplicatively to base move speed, damagePct is added to
+ *     the base additive damage bonus (same convention as the damagePct stat
+ *     offer in STAT_SHOP_OFFERS).
+ */
+export interface FrogClassStatMods {
+  readonly maxHp: number;
+  readonly moveSpeedPct: number;
+  readonly damagePct: number;
+  readonly armor: number;
+  readonly pickupRadius: number;
+}
+
+export interface FrogClassDef {
+  readonly id: FrogClassId;
+  readonly displayName: string;
+  readonly description: string;
+  readonly statMods: FrogClassStatMods;
+  readonly startingWeapon: WeaponType;
+}
+
+export const FROG_CLASSES: Readonly<Record<FrogClassId, FrogClassDef>> = {
+  bullfrog: {
+    id: 'bullfrog',
+    displayName: 'Bullfrog',
+    description: 'Tanky bruiser: more Max HP and Armor, slower.',
+    statMods: { maxHp: 8, moveSpeedPct: -0.15, damagePct: 0, armor: 1, pickupRadius: 0 },
+    startingWeapon: 'croakNova',
+  },
+  treefrog: {
+    id: 'treefrog',
+    displayName: 'Tree Frog',
+    description: 'Fast skirmisher: quicker with a bigger pickup radius, less Max HP.',
+    statMods: { maxHp: -4, moveSpeedPct: 0.15, damagePct: 0, armor: 0, pickupRadius: 20 },
+    startingWeapon: 'tongueLash',
+  },
+  dartfrog: {
+    id: 'dartfrog',
+    displayName: 'Dart Frog',
+    description: 'Glass cannon: hits harder, less Max HP.',
+    statMods: { maxHp: -6, moveSpeedPct: 0, damagePct: 0.15, armor: 0, pickupRadius: 0 },
+    startingWeapon: 'bubbleBlaster',
+  },
+};
+
+/** Lobby default when a player never picks a class (Phase 2 §1). */
+export const DEFAULT_CLASS: FrogClassId = 'treefrog';
+
+export interface FrogEffectiveStats {
+  readonly maxHp: number;
+  readonly moveSpeed: number;
+  readonly damagePct: number;
+  readonly armor: number;
+  readonly regen: number;
+  readonly pickupRadius: number;
+}
+
+/** FROG_BASE_STATS with a class's stat-modifier bundle applied — the stat
+ * block a player starts a run with, before any shop purchases. */
+export function classBaseStats(classId: FrogClassId): FrogEffectiveStats {
+  const mods = FROG_CLASSES[classId].statMods;
+  return {
+    maxHp: FROG_BASE_STATS.maxHp + mods.maxHp,
+    moveSpeed: FROG_BASE_STATS.moveSpeed * (1 + mods.moveSpeedPct),
+    damagePct: FROG_BASE_STATS.damagePct + mods.damagePct,
+    armor: FROG_BASE_STATS.armor + mods.armor,
+    regen: FROG_BASE_STATS.regen,
+    pickupRadius: FROG_BASE_STATS.pickupRadius + mods.pickupRadius,
+  };
+}
+
+/** Lobby name field max length (Phase 2 §5). */
+export const MAX_NAME_LENGTH = 12;
 
 export type PlayerColorName = 'green' | 'blue' | 'orange' | 'pink';
 
@@ -120,10 +210,30 @@ export const STARTING_WEAPON_SLOTS: readonly (WeaponSlot | null)[] = [
 ];
 
 // ---------------------------------------------------------------------------
+// Phase 2 §3 Weapon Merging
+// ---------------------------------------------------------------------------
+
+/**
+ * Merge rule (Phase 2 §3): two same-kind, same-level weapons in a player's
+ * slots combine into ONE weapon of the next level, freeing the other slot.
+ * Free (no fly cost). Only levels I and II are mergeable — there is no
+ * Lv IV, so two Lv IIIs cannot merge.
+ */
+export const MERGEABLE_LEVELS: readonly WeaponLevel[] = [1, 2];
+
+/** The level a merge of two `level`-level weapons produces, or null if that
+ * level isn't mergeable (Lv III). */
+export function mergeResultLevel(level: WeaponLevel): WeaponLevel | null {
+  if (level === 1) return 2;
+  if (level === 2) return 3;
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // §5 Enemies
 // ---------------------------------------------------------------------------
 
-export type EnemyType = 'wasp' | 'snailSpitter';
+export type EnemyType = 'wasp' | 'snailSpitter' | 'heron' | 'snailKing';
 
 export interface WaspDef {
   readonly type: 'wasp';
@@ -145,7 +255,55 @@ export interface SnailSpitterDef {
   readonly flyDrop: number;
 }
 
-export const ENEMY_DEFS: Readonly<{ wasp: WaspDef; snailSpitter: SnailSpitterDef }> = {
+/** Heron (Phase 2 §4, waves 3+): circles at range, telegraphs, then dive-swoops
+ * in a straight line through the arena. circleSpeed/swoopSpeed are starting
+ * values — TUNING, adjust in P6 playtest. */
+export interface HeronDef {
+  readonly type: 'heron';
+  readonly hp: number;
+  readonly circleSpeed: number; // px/s while circling at range — TUNING
+  readonly swoopSpeed: number; // px/s during the dive-swoop — TUNING
+  readonly telegraphSec: number;
+  readonly swoopDamage: number;
+  readonly flyDrop: number;
+  /** First wave this enemy can spawn in. */
+  readonly minWave: number;
+}
+
+/** Snail King (Phase 2 §4): wave-5 finale boss. `hp` is the base value —
+ * effective spawn HP is `hp * playerFactor(playerCount)` (NOT
+ * enemyHpMultiplier — bosses scale with player count like spawn caps do,
+ * not with the wave-HP curve, since there's only one wave-5 boss).
+ * shellIntervalSec/projectileDamage are not specified numerically in
+ * DESIGN-PHASE2.md §4 — starting values, TUNING. */
+export interface SnailKingDef {
+  readonly type: 'snailKing';
+  readonly hp: number;
+  readonly speed: number; // px/s
+  readonly spreadCount: number;
+  readonly spreadIntervalSec: number;
+  readonly projectileDamage: number; // TUNING — not specified in DESIGN-PHASE2.md
+  readonly projectileSpeed: number; // px/s — TUNING
+  readonly shellDurationSec: number;
+  readonly shellArmor: number;
+  /** How often the shell phase recurs while the boss lives — TUNING (not
+   * specified in DESIGN-PHASE2.md beyond "periodically"). */
+  readonly shellIntervalSec: number;
+  readonly flyDrop: number; // TUNING — boss reward, not specified
+  /** Boss appears in the last N seconds of this wave. */
+  readonly spawnWave: number;
+  readonly spawnAtRemainingSec: number;
+  /** Extra seconds granted past the wave timer if the boss is still alive,
+   * after which the run ends in victory regardless (DESIGN-PHASE2.md §4). */
+  readonly hardCapExtraSec: number;
+}
+
+export const ENEMY_DEFS: Readonly<{
+  wasp: WaspDef;
+  snailSpitter: SnailSpitterDef;
+  heron: HeronDef;
+  snailKing: SnailKingDef;
+}> = {
   wasp: {
     type: 'wasp',
     hp: 4,
@@ -164,6 +322,32 @@ export const ENEMY_DEFS: Readonly<{ wasp: WaspDef; snailSpitter: SnailSpitterDef
     projectileSpeed: 250,
     flyDrop: 3,
   },
+  heron: {
+    type: 'heron',
+    hp: 8,
+    circleSpeed: 150,
+    swoopSpeed: 500,
+    telegraphSec: 0.8,
+    swoopDamage: 4,
+    flyDrop: 2,
+    minWave: 3,
+  },
+  snailKing: {
+    type: 'snailKing',
+    hp: 120,
+    speed: 40,
+    spreadCount: 3,
+    spreadIntervalSec: 2,
+    projectileDamage: 4,
+    projectileSpeed: 250,
+    shellDurationSec: 2,
+    shellArmor: 5,
+    shellIntervalSec: 8,
+    flyDrop: 30,
+    spawnWave: 5,
+    spawnAtRemainingSec: 20,
+    hardCapExtraSec: 30,
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -173,6 +357,9 @@ export const ENEMY_DEFS: Readonly<{ wasp: WaspDef; snailSpitter: SnailSpitterDef
 export interface SpawnMix {
   readonly wasp: number;
   readonly snailSpitter: number;
+  /** 0 before heron's minWave (Phase 2 §4: waves 3+). Weights are starting
+   * values — TUNING. */
+  readonly heron: number;
 }
 
 export interface WaveDef {
@@ -183,6 +370,8 @@ export interface WaveDef {
   readonly spawnIntervalStartSec: number;
   /** Spawn interval (seconds between enemy spawns) at wave end (ramps down = faster). */
   readonly spawnIntervalEndSec: number;
+  /** True for the wave that spawns the Snail King finale (Phase 2 §4). */
+  readonly bossWave: boolean;
 }
 
 export const WAVE_COUNT = 5;
@@ -222,24 +411,27 @@ export function spawnInterval(wave: number): number {
   return START_SEC + (END_SEC - START_SEC) * t;
 }
 
+// Heron enters the mix at its minWave (Phase 2 §4: wave 3+); weights below
+// are modest starting values — TUNING, adjust in P6 playtest.
 export const WAVES: readonly WaveDef[] = [1, 2, 3, 4, 5].map((wave) => {
   const durationSec = [30, 35, 40, 45, 60][wave - 1];
   const spawnMix: SpawnMix =
     wave === 1
-      ? { wasp: 1, snailSpitter: 0 }
+      ? { wasp: 1, snailSpitter: 0, heron: 0 }
       : wave === 2
-        ? { wasp: 0.7, snailSpitter: 0.3 }
+        ? { wasp: 0.7, snailSpitter: 0.3, heron: 0 }
         : wave === 3
-          ? { wasp: 0.5, snailSpitter: 0.5 }
+          ? { wasp: 0.45, snailSpitter: 0.45, heron: 0.1 }
           : wave === 4
-            ? { wasp: 0.6, snailSpitter: 0.4 }
-            : { wasp: 0.5, snailSpitter: 0.5 };
+            ? { wasp: 0.5, snailSpitter: 0.35, heron: 0.15 }
+            : { wasp: 0.4, snailSpitter: 0.4, heron: 0.2 };
   return {
     wave,
     durationSec,
     spawnMix,
     spawnIntervalStartSec: spawnInterval(wave),
     spawnIntervalEndSec: spawnInterval(Math.min(wave + 1, WAVE_COUNT)),
+    bossWave: wave === ENEMY_DEFS.snailKing.spawnWave,
   };
 });
 
@@ -280,7 +472,10 @@ export interface StatShopOffer {
   readonly effect:
     | { readonly stat: 'maxHp'; readonly amount: number; readonly healOnBuy: number }
     | { readonly stat: 'damagePct'; readonly amount: number }
-    | { readonly stat: 'moveSpeedPct'; readonly amount: number };
+    | { readonly stat: 'moveSpeedPct'; readonly amount: number }
+    | { readonly stat: 'armor'; readonly amount: number }
+    | { readonly stat: 'regen'; readonly amount: number }
+    | { readonly stat: 'pickupRadius'; readonly amount: number };
 }
 
 export const STAT_SHOP_OFFERS: readonly StatShopOffer[] = [
@@ -305,6 +500,31 @@ export const STAT_SHOP_OFFERS: readonly StatShopOffer[] = [
     priceIncrement: 6,
     maxPurchases: 3,
     effect: { stat: 'moveSpeedPct', amount: 0.1 },
+  },
+  // Phase 2 §2 — completing the stat sheet.
+  {
+    id: 'buyArmor',
+    kind: 'stat',
+    cost: 14,
+    priceIncrement: 8,
+    maxPurchases: 3,
+    effect: { stat: 'armor', amount: 1 },
+  },
+  {
+    id: 'buyRegen',
+    kind: 'stat',
+    cost: 12,
+    priceIncrement: 6,
+    maxPurchases: 3,
+    effect: { stat: 'regen', amount: 1 },
+  },
+  {
+    id: 'buyPickupRadius',
+    kind: 'stat',
+    cost: 8,
+    priceIncrement: 4,
+    maxPurchases: 4,
+    effect: { stat: 'pickupRadius', amount: 15 },
   },
 ];
 

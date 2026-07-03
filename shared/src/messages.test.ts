@@ -23,6 +23,12 @@ function exhaustiveClientMsg(msg: ClientMsg): string {
       return "ready";
     case "debug":
       return "debug";
+    case "pickClass":
+      return "pickClass";
+    case "setName":
+      return "setName";
+    case "merge":
+      return "merge";
     default:
       return assertNever(msg);
   }
@@ -65,6 +71,14 @@ function exhaustiveGameEvent(event: GameEvent): string {
       return "playerJoined";
     case "playerLeft":
       return "playerLeft";
+    case "classPicked":
+      return "classPicked";
+    case "merged":
+      return "merged";
+    case "bossSpawned":
+      return "bossSpawned";
+    case "bossDied":
+      return "bossDied";
     default:
       return assertNever(event);
   }
@@ -117,7 +131,7 @@ describe("protocol message unions", () => {
     expect(msg.players).toEqual([]);
   });
 
-  it("OFFER_IDS matches the SHOP_CATALOG/STAT_SHOP_OFFERS ids plus the upgrade id", () => {
+  it("OFFER_IDS matches the SHOP_CATALOG/STAT_SHOP_OFFERS ids plus the upgrade and merge ids", () => {
     expect(OFFER_IDS).toEqual([
       "buyTongueLash",
       "buyBubbleBlaster",
@@ -126,7 +140,31 @@ describe("protocol message unions", () => {
       "buyMaxHp",
       "buyDamage",
       "buyMoveSpeed",
+      "buyArmor",
+      "buyRegen",
+      "buyPickupRadius",
+      "merge",
     ]);
+  });
+
+  it("pickClass/setName/merge messages typecheck", () => {
+    const pick: ClientMsg = { type: "pickClass", class: "bullfrog" };
+    const name: ClientMsg = { type: "setName", name: "Kermit" };
+    const merge: ClientMsg = { type: "merge" };
+    expect(pick.type).toBe("pickClass");
+    expect(name.type).toBe("setName");
+    expect(merge.type).toBe("merge");
+  });
+
+  it("classPicked/merged/bossSpawned/bossDied events typecheck", () => {
+    const classPicked: GameEvent = { type: "classPicked", playerId: "p1", class: "treefrog" };
+    const merged: GameEvent = { type: "merged", playerId: "p1", slot: 0, newLevel: 2 };
+    const bossSpawned: GameEvent = { type: "bossSpawned" };
+    const bossDied: GameEvent = { type: "bossDied" };
+    expect(classPicked.class).toBe("treefrog");
+    expect(merged.newLevel).toBe(2);
+    expect(bossSpawned.type).toBe("bossSpawned");
+    expect(bossDied.type).toBe("bossDied");
   });
 
   it("makeIdFactory produces prefixed incrementing ids", () => {

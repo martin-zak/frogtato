@@ -95,6 +95,9 @@ export function resetPlayerForNewRun(player: PlayerState): void {
     damagePct: FROG_BASE_STATS.damagePct,
     moveSpeed: FROG_BASE_STATS.moveSpeed,
     maxHp: FROG_BASE_STATS.maxHp,
+    armor: FROG_BASE_STATS.armor,
+    regen: FROG_BASE_STATS.regen,
+    pickupRadius: FROG_BASE_STATS.pickupRadius,
   };
   player.ready = false;
   player.killCount = 0;

@@ -59,14 +59,21 @@ interface SimpleEntry {
   sprite: Phaser.GameObjects.Sprite;
 }
 
+// Phase 2 P1 mechanical addition: heron/snailking placeholder textures
+// (reusing wasp/snail art) so this Record<EnemyKind, ...> stays exhaustive
+// for tsc -b. Real sprites are P5's job (client heron & boss rendering).
 const ENEMY_TEXTURE: Readonly<Record<EnemyKind, string>> = {
   wasp: SPRITE_KEYS.wasp,
   snail: SPRITE_KEYS.snail,
+  heron: SPRITE_KEYS.wasp,
+  snailking: SPRITE_KEYS.snail,
 };
 
 const ENEMY_FRAME_SIZE: Readonly<Record<EnemyKind, { width: number; height: number }>> = {
   wasp: WASP_FRAME,
   snail: SNAIL_FRAME,
+  heron: WASP_FRAME,
+  snailking: SNAIL_FRAME,
 };
 
 const PROJECTILE_TEXTURE: Readonly<Record<ProjectileKind, string>> = {

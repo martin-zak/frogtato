@@ -6,6 +6,7 @@ function makeOwn(overrides: Partial<PlayerSnap> = {}): PlayerSnap {
   return {
     id: "p1",
     color: 0,
+    class: "treefrog",
     x: 0,
     y: 0,
     hp: 20,
@@ -14,7 +15,7 @@ function makeOwn(overrides: Partial<PlayerSnap> = {}): PlayerSnap {
     downed: false,
     spectator: false,
     weapons: [{ kind: "tongue", level: 1 }, null],
-    stats: { damagePct: 0, moveSpeed: 220, maxHp: 20 },
+    stats: { damagePct: 0, moveSpeed: 220, maxHp: 20, armor: 0, regen: 0, pickupRadius: 60 },
     ready: false,
     ...overrides,
   };

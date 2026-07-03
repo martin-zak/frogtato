@@ -6,13 +6,14 @@ import type { PlayerSnap } from "@frogtato/shared";
 function makePlayer(overrides: Partial<PlayerSnap> & { id: string; x: number; y: number }): PlayerSnap {
   return {
     color: 0,
+    class: "treefrog",
     hp: 20,
     maxHp: 20,
     flies: 0,
     downed: false,
     spectator: false,
     weapons: [],
-    stats: { damagePct: 0, moveSpeed: 220, maxHp: 20 },
+    stats: { damagePct: 0, moveSpeed: 220, maxHp: 20, armor: 0, regen: 0, pickupRadius: 60 },
     ready: false,
     ...overrides,
   };

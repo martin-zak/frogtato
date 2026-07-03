@@ -15,9 +15,18 @@ export const SNAIL_RADIUS = 18;
 export const ACID_PROJECTILE_RADIUS = 8;
 export const BUBBLE_PROJECTILE_RADIUS = 8;
 
+// Phase 2 P1 mechanical addition: heron/snailking radii, picked to keep this
+// Record<EnemyKind, number> exhaustive so tsc -b stays green. Same
+// tuning-not-balance status as the rest of this table — P3 (server heron &
+// boss) owns getting these right.
+export const HERON_RADIUS = 16;
+export const SNAIL_KING_RADIUS = 54; // "scaled sprite x3" per DESIGN-PHASE2.md §4 (18 * 3)
+
 export const ENEMY_RADIUS: Readonly<Record<EnemyKind, number>> = {
   wasp: WASP_RADIUS,
   snail: SNAIL_RADIUS,
+  heron: HERON_RADIUS,
+  snailking: SNAIL_KING_RADIUS,
 };
 
 export interface DamagePlayerResult {

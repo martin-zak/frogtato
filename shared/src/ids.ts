@@ -21,6 +21,13 @@ export function makeIdFactory(prefix: string): () => string {
  */
 export const UPGRADE_OFFER_ID = "upgradeSlot";
 
+/**
+ * Phase 2 §3: weapon merging is validated server-side like any purchase, so
+ * it reuses the `purchaseResult` event with this offer id (a successful
+ * merge additionally emits its own `merged` event — see messages.ts).
+ */
+export const MERGE_OFFER_ID = "merge";
+
 export const OFFER_IDS = [
   "buyTongueLash",
   "buyBubbleBlaster",
@@ -29,6 +36,10 @@ export const OFFER_IDS = [
   "buyMaxHp",
   "buyDamage",
   "buyMoveSpeed",
+  "buyArmor",
+  "buyRegen",
+  "buyPickupRadius",
+  MERGE_OFFER_ID,
 ] as const satisfies readonly string[];
 
 export type OfferId = (typeof OFFER_IDS)[number];

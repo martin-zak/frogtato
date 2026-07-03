@@ -14,8 +14,13 @@ export type Phase = "lobby" | "wave" | "shop" | "scoreboard";
 /** The 3 weapon archetypes (DESIGN §4). */
 export type WeaponKind = "tongue" | "bubble" | "croak";
 
-/** The 2 enemy types (DESIGN §5). */
-export type EnemyKind = "wasp" | "snail";
+/** The 3 frog classes (DESIGN-PHASE2.md §1). Deliberately not imported from
+ * constants.ts (see file header) — same id spelling as FrogClassId there. */
+export type FrogClassId = "bullfrog" | "treefrog" | "dartfrog";
+
+/** The 4 enemy types (DESIGN §5, DESIGN-PHASE2.md §4: heron + the Snail King
+ * boss added in Phase 2). */
+export type EnemyKind = "wasp" | "snail" | "heron" | "snailking";
 
 /** The 2 server-simulated projectile kinds (DESIGN §4/§5). */
 export type ProjectileKind = "acid" | "bubble";
@@ -46,6 +51,16 @@ export type ClientMsg =
   | { type: "start" }
   | { type: "buy"; offerId: string; slot?: number }
   | { type: "ready" }
+  /** Lobby-phase class pick (DESIGN-PHASE2.md §1). Rebroadcast via the
+   * `classPicked` event; persists across a rematch (§5). */
+  | { type: "pickClass"; class: FrogClassId }
+  /** Lobby-phase name entry (DESIGN-PHASE2.md §5), max MAX_NAME_LENGTH chars
+   * (enforced server-side — that constant lives in constants.ts). */
+  | { type: "setName"; name: string }
+  /** Shop-phase weapon merge (DESIGN-PHASE2.md §3). No params: merge is only
+   * legal when both weapon slots hold the same kind + level, which is
+   * unambiguous per player. Validated server-side like any purchase. */
+  | { type: "merge" }
   | ClientDebugMsg;
 
 // ---------------------------------------------------------------------------
@@ -57,6 +72,8 @@ export interface PlayerSnap {
   name?: string;
   /** Palette index (see constants for the actual color values). */
   color: number;
+  /** The server always knows this (DEFAULT_CLASS applies if never picked). */
+  class: FrogClassId;
   x: number;
   y: number;
   hp: number;
@@ -66,7 +83,16 @@ export interface PlayerSnap {
   spectator: boolean;
   /** Index in this array = weapon slot; null = empty slot. */
   weapons: ({ kind: WeaponKind; level: WeaponLevel } | null)[];
-  stats: { damagePct: number; moveSpeed: number; maxHp: number };
+  stats: {
+    damagePct: number;
+    moveSpeed: number;
+    maxHp: number;
+    /** Phase 2 §2 stats — flat damage reduction, HP/5s during waves, fly
+     * magnet range (px). */
+    armor: number;
+    regen: number;
+    pickupRadius: number;
+  };
   /** Shop-phase ready state. */
   ready: boolean;
 }
@@ -78,6 +104,12 @@ export interface EnemySnap {
   y: number;
   hp: number;
   maxHp: number;
+  /** Heron only (DESIGN-PHASE2.md §4): present with the swoop-line endpoints
+   * during the 0.8s telegraph before a dive-swoop. */
+  telegraph?: { x1: number; y1: number; x2: number; y2: number };
+  /** Snail King only (DESIGN-PHASE2.md §4): true while in its shell phase
+   * (Armor 5, visibly tucked in). */
+  shelled?: boolean;
 }
 
 export interface ProjectileSnap {
@@ -116,7 +148,15 @@ export type GameEvent =
   | { type: "gameOver"; scoreboard: ScoreRow[] }
   | { type: "victory"; scoreboard: ScoreRow[] }
   | { type: "playerJoined"; playerId: string }
-  | { type: "playerLeft"; playerId: string };
+  | { type: "playerLeft"; playerId: string }
+  /** DESIGN-PHASE2.md §1: broadcast so every player sees each other's pick. */
+  | { type: "classPicked"; playerId: string; class: FrogClassId }
+  /** DESIGN-PHASE2.md §3: a successful merge. Failed merges use
+   * `purchaseResult` with offerId "merge" (see ids.ts MERGE_OFFER_ID). */
+  | { type: "merged"; playerId: string; slot: number; newLevel: WeaponLevel }
+  /** DESIGN-PHASE2.md §4: Snail King finale lifecycle. */
+  | { type: "bossSpawned" }
+  | { type: "bossDied" };
 
 // ---------------------------------------------------------------------------
 // Server -> Client
