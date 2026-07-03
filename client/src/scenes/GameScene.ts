@@ -3,10 +3,11 @@
 // INPUT_HZ (and immediately on change). No gameplay rules live here.
 
 import Phaser from "phaser";
-import { ARENA, INPUT_HZ, INTERP_DELAY_MS, PLAYER_COLORS, PLAYER_COLOR_ORDER } from "@frogtato/shared";
-import type { PlayerSnap } from "@frogtato/shared";
+import { ARENA, INPUT_HZ, INTERP_DELAY_MS } from "@frogtato/shared";
 import { interpolateSnapshot } from "../interp.js";
 import type { NetClient } from "../net.js";
+import { EntityRenderer } from "../render/entities.js";
+import { EffectsController } from "../render/effects.js";
 
 interface InputState {
   up: boolean;
@@ -18,19 +19,15 @@ interface InputState {
 const SAME_STATE = (a: InputState, b: InputState): boolean =>
   a.up === b.up && a.down === b.down && a.left === b.left && a.right === b.right;
 
-const FROG_RADIUS = 22;
-
-function colorHexInt(colorIndex: number): number {
-  const name = PLAYER_COLOR_ORDER[colorIndex % PLAYER_COLOR_ORDER.length];
-  return Phaser.Display.Color.HexStringToColor(PLAYER_COLORS[name]).color;
-}
-
 export class GameScene extends Phaser.Scene {
   private net!: NetClient;
 
   private arenaGfx!: Phaser.GameObjects.Graphics;
-  private playersGfx!: Phaser.GameObjects.Graphics;
   private followTarget!: Phaser.GameObjects.Rectangle;
+
+  private entityRenderer!: EntityRenderer;
+  private effects!: EffectsController;
+  private unsubscribeEvents: (() => void) | null = null;
 
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd!: { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key };
@@ -38,6 +35,7 @@ export class GameScene extends Phaser.Scene {
   private seq = 0;
   private lastSent: InputState = { up: false, down: false, left: false, right: false };
   private sendAccumMs = 0;
+  private lastOwnFlies: number | null = null;
 
   constructor() {
     super("Game");
@@ -48,13 +46,20 @@ export class GameScene extends Phaser.Scene {
     this.seq = 0;
     this.lastSent = { up: false, down: false, left: false, right: false };
     this.sendAccumMs = 0;
+    this.lastOwnFlies = null;
 
     this.cameras.main.setBackgroundColor("#0a1a12");
 
     this.arenaGfx = this.add.graphics();
     this.drawArena();
 
-    this.playersGfx = this.add.graphics();
+    this.entityRenderer = new EntityRenderer(this);
+    this.effects = new EffectsController(this, this.entityRenderer);
+    this.unsubscribeEvents = this.net.onEvent((event) => {
+      const renderTime = Date.now() - INTERP_DELAY_MS;
+      const state = interpolateSnapshot(this.net.getSnapshots(), renderTime);
+      this.effects.handleEvent(event, state.players);
+    });
 
     this.followTarget = this.add.rectangle(ARENA.width / 2, ARENA.height / 2, 1, 1, 0x000000, 0);
     this.cameras.main.setBounds(0, 0, ARENA.width, ARENA.height);
@@ -66,11 +71,17 @@ export class GameScene extends Phaser.Scene {
       this.cursors = keyboard.createCursorKeys();
       this.wasd = keyboard.addKeys("W,A,S,D") as typeof this.wasd;
     }
+
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.unsubscribeEvents?.();
+      this.unsubscribeEvents = null;
+      this.entityRenderer.destroy();
+    });
   }
 
   update(_time: number, delta: number): void {
     this.handleInput(delta);
-    this.render();
+    this.render(delta);
   }
 
   private readInputState(): InputState {
@@ -95,46 +106,24 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private render(): void {
+  private render(deltaMs: number): void {
     const renderTime = Date.now() - INTERP_DELAY_MS;
     const state = interpolateSnapshot(this.net.getSnapshots(), renderTime);
 
     const ownPlayer = state.players.find((p) => p.id === this.net.playerId);
     if (ownPlayer) {
       this.followTarget.setPosition(ownPlayer.x, ownPlayer.y);
-    }
 
-    this.drawPlayers(state.players);
-  }
-
-  private drawPlayers(players: PlayerSnap[]): void {
-    const g = this.playersGfx;
-    g.clear();
-
-    for (const p of players) {
-      const color = colorHexInt(p.color);
-      const alpha = p.downed ? 0.35 : 1;
-
-      g.fillStyle(color, alpha);
-      g.fillCircle(p.x, p.y, FROG_RADIUS);
-      g.lineStyle(2, 0x0a1a12, alpha);
-      g.strokeCircle(p.x, p.y, FROG_RADIUS);
-
-      // Eyes: two small white circles with black pupils near the top.
-      const eyeOffsetX = FROG_RADIUS * 0.45;
-      const eyeOffsetY = -FROG_RADIUS * 0.35;
-      const eyeRadius = FROG_RADIUS * 0.28;
-      const pupilRadius = eyeRadius * 0.45;
-
-      for (const dir of [-1, 1]) {
-        const ex = p.x + dir * eyeOffsetX;
-        const ey = p.y + eyeOffsetY;
-        g.fillStyle(0xffffff, alpha);
-        g.fillCircle(ex, ey, eyeRadius);
-        g.fillStyle(0x101418, alpha);
-        g.fillCircle(ex, ey, pupilRadius);
+      // Pure client-side bookkeeping (not a gameplay rule): detect the
+      // local player's fly count going up between snapshots to trigger the
+      // pickup SFX, since there's no dedicated `pickup` GameEvent.
+      if (this.lastOwnFlies !== null && ownPlayer.flies > this.lastOwnFlies) {
+        this.effects.playPickupSfx();
       }
+      this.lastOwnFlies = ownPlayer.flies;
     }
+
+    this.entityRenderer.update(state, this.net.playerId, deltaMs);
   }
 
   private drawArena(): void {

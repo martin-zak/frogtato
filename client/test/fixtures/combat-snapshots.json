@@ -1,0 +1,163 @@
+[
+  {
+    "players": [
+      {
+        "id": "p1",
+        "name": "Alice",
+        "color": 0,
+        "x": 100,
+        "y": 100,
+        "hp": 20,
+        "maxHp": 20,
+        "flies": 0,
+        "downed": false,
+        "spectator": false,
+        "weapons": [{ "kind": "tongue", "level": 1 }, null],
+        "stats": { "damagePct": 0, "moveSpeed": 220, "maxHp": 20 },
+        "ready": false
+      },
+      {
+        "id": "p2",
+        "name": "Bob",
+        "color": 1,
+        "x": 200,
+        "y": 150,
+        "hp": 18,
+        "maxHp": 20,
+        "flies": 2,
+        "downed": false,
+        "spectator": false,
+        "weapons": [{ "kind": "tongue", "level": 1 }, null],
+        "stats": { "damagePct": 0, "moveSpeed": 220, "maxHp": 20 },
+        "ready": false
+      }
+    ],
+    "enemies": [
+      { "id": "e1", "kind": "wasp", "x": 300, "y": 300, "hp": 4, "maxHp": 4 }
+    ],
+    "projectiles": [],
+    "flies": [{ "id": "f1", "x": 120, "y": 110 }]
+  },
+  {
+    "players": [
+      {
+        "id": "p1",
+        "name": "Alice",
+        "color": 0,
+        "x": 110,
+        "y": 105,
+        "hp": 20,
+        "maxHp": 20,
+        "flies": 1,
+        "downed": false,
+        "spectator": false,
+        "weapons": [{ "kind": "tongue", "level": 1 }, null],
+        "stats": { "damagePct": 0, "moveSpeed": 220, "maxHp": 20 },
+        "ready": false
+      },
+      {
+        "id": "p2",
+        "name": "Bob",
+        "color": 1,
+        "x": 210,
+        "y": 150,
+        "hp": 18,
+        "maxHp": 20,
+        "flies": 2,
+        "downed": false,
+        "spectator": false,
+        "weapons": [{ "kind": "tongue", "level": 1 }, null],
+        "stats": { "damagePct": 0, "moveSpeed": 220, "maxHp": 20 },
+        "ready": false
+      }
+    ],
+    "enemies": [
+      { "id": "e1", "kind": "wasp", "x": 280, "y": 280, "hp": 4, "maxHp": 4 },
+      { "id": "e2", "kind": "snail", "x": 400, "y": 400, "hp": 12, "maxHp": 12 }
+    ],
+    "projectiles": [{ "id": "pr1", "kind": "acid", "x": 390, "y": 390 }],
+    "flies": [
+      { "id": "f1", "x": 120, "y": 110 },
+      { "id": "f2", "x": 500, "y": 500 }
+    ]
+  },
+  {
+    "players": [
+      {
+        "id": "p1",
+        "name": "Alice",
+        "color": 0,
+        "x": 115,
+        "y": 108,
+        "hp": 20,
+        "maxHp": 20,
+        "flies": 1,
+        "downed": false,
+        "spectator": false,
+        "weapons": [{ "kind": "tongue", "level": 1 }, null],
+        "stats": { "damagePct": 0, "moveSpeed": 220, "maxHp": 20 },
+        "ready": false
+      },
+      {
+        "id": "p2",
+        "name": "Bob",
+        "color": 1,
+        "x": 215,
+        "y": 152,
+        "hp": 15,
+        "maxHp": 20,
+        "flies": 2,
+        "downed": false,
+        "spectator": false,
+        "weapons": [{ "kind": "tongue", "level": 1 }, null],
+        "stats": { "damagePct": 0, "moveSpeed": 220, "maxHp": 20 },
+        "ready": false
+      }
+    ],
+    "enemies": [
+      { "id": "e1", "kind": "wasp", "x": 260, "y": 260, "hp": 2, "maxHp": 4 },
+      { "id": "e2", "kind": "snail", "x": 390, "y": 390, "hp": 12, "maxHp": 12 }
+    ],
+    "projectiles": [{ "id": "pr1", "kind": "acid", "x": 395, "y": 393 }],
+    "flies": [{ "id": "f2", "x": 500, "y": 500 }]
+  },
+  {
+    "players": [
+      {
+        "id": "p1",
+        "name": "Alice",
+        "color": 0,
+        "x": 120,
+        "y": 110,
+        "hp": 20,
+        "maxHp": 20,
+        "flies": 3,
+        "downed": false,
+        "spectator": false,
+        "weapons": [{ "kind": "tongue", "level": 1 }, null],
+        "stats": { "damagePct": 0, "moveSpeed": 220, "maxHp": 20 },
+        "ready": false
+      },
+      {
+        "id": "p2",
+        "name": "Bob",
+        "color": 1,
+        "x": 220,
+        "y": 155,
+        "hp": 15,
+        "maxHp": 20,
+        "flies": 2,
+        "downed": false,
+        "spectator": false,
+        "weapons": [{ "kind": "tongue", "level": 1 }, null],
+        "stats": { "damagePct": 0, "moveSpeed": 220, "maxHp": 20 },
+        "ready": false
+      }
+    ],
+    "enemies": [
+      { "id": "e2", "kind": "snail", "x": 385, "y": 387, "hp": 12, "maxHp": 12 }
+    ],
+    "projectiles": [],
+    "flies": []
+  }
+]
