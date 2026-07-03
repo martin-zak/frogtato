@@ -10,6 +10,7 @@ import {
   type ClientMsg,
   type PlayerSnap,
   type WeaponKind,
+  type WeaponLevel,
   type WeaponSlot,
 } from '@frogtato/shared';
 
@@ -18,12 +19,20 @@ import {
  * in snapshots, while the balance data (constants.ts) uses full type names
  * ("tongueLash"/"bubbleBlaster"/"croakNova"). Both files are owned upstream (T2) and
  * intentionally kept independent of each other, so this mapping is protocol glue
- * (not a balance number) that has to live somewhere on the server.
+ * (not a balance number) that has to live somewhere on the server. Exported because
+ * weapons.ts (T6) needs it too for attack events.
  */
-const WEAPON_KIND_BY_TYPE: Record<WeaponSlot['weapon'], WeaponKind> = {
+export const WEAPON_KIND_BY_TYPE: Record<WeaponSlot['weapon'], WeaponKind> = {
   tongueLash: 'tongue',
   bubbleBlaster: 'bubble',
   croakNova: 'croak',
+};
+
+/** Reverse of WEAPON_KIND_BY_TYPE — used by the debug `give` message (short kind -> full type). */
+export const WEAPON_TYPE_BY_KIND: Record<WeaponKind, WeaponSlot['weapon']> = {
+  tongue: 'tongueLash',
+  bubble: 'bubbleBlaster',
+  croak: 'croakNova',
 };
 
 export interface PlayerInputState {
@@ -47,6 +56,8 @@ export interface PlayerState {
   downed: boolean;
   spectator: boolean;
   weapons: (WeaponSlot | null)[];
+  /** Per-slot remaining cooldown (sec), parallel array to `weapons`. T6. */
+  weaponCooldowns: number[];
   stats: { damagePct: number; moveSpeed: number; maxHp: number };
   ready: boolean;
   input: PlayerInputState;
@@ -65,6 +76,9 @@ export function createPlayer(id: string, colorIndex: number, token: string): Pla
     downed: false,
     spectator: false,
     weapons: [...STARTING_WEAPON_SLOTS],
+    // Start ready-to-fire (0 cooldown) so a fresh loadout can act the instant
+    // an enemy comes into range, rather than waiting out a full cooldown first.
+    weaponCooldowns: STARTING_WEAPON_SLOTS.map(() => 0),
     stats: {
       damagePct: FROG_BASE_STATS.damagePct,
       moveSpeed: FROG_BASE_STATS.moveSpeed,
@@ -113,6 +127,18 @@ export function stepPlayerMovement(player: PlayerState, dtSec: number): void {
   const clamped = clampToArenaEllipse(nextX, nextY);
   player.x = clamped.x;
   player.y = clamped.y;
+}
+
+/**
+ * Debug-only (T6 `give` message): replaces a slot's weapon outright, regardless
+ * of what was there before. Resets that slot's cooldown to 0 (ready to fire) so
+ * test scripts and manual debugging get immediate feedback. No-op on an
+ * out-of-range slot index.
+ */
+export function setWeaponSlot(player: PlayerState, slot: number, kind: WeaponKind, level: WeaponLevel): void {
+  if (slot < 0 || slot >= player.weapons.length) return;
+  player.weapons[slot] = { weapon: WEAPON_TYPE_BY_KIND[kind], level };
+  player.weaponCooldowns[slot] = 0;
 }
 
 /** Converts internal state to the wire-format PlayerSnap. */

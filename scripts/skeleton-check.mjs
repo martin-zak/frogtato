@@ -72,11 +72,23 @@ async function main() {
     if (msg.type === 'snapshot') snapshotsA.push(msg);
   });
 
+  // Pre-existing race fixed while verifying T6 (weapons) didn't regress this
+  // check: attach both "wait for welcome" listeners synchronously *before*
+  // sending either `hello`, not sequentially (await A's welcome, then start
+  // listening for B's). Sequentially awaiting left a real gap in which B's
+  // `hello` -> `welcome` round trip (fast on localhost) could complete and
+  // fire its 'message' event with zero listeners attached, silently dropping
+  // it forever (ws's EventEmitter doesn't buffer/replay for late
+  // subscribers) — reproduced reliably against a pristine server with no
+  // weapons/combat activity at all, so this was unrelated to T6's changes.
+  const welcomeAPromise = waitForMessage(wsA, (m) => m.type === 'welcome');
+  const welcomeBPromise = waitForMessage(wsB, (m) => m.type === 'welcome');
+
   wsA.send(JSON.stringify({ type: 'hello' }));
   wsB.send(JSON.stringify({ type: 'hello' }));
 
-  const welcomeA = await waitForMessage(wsA, (m) => m.type === 'welcome');
-  const welcomeB = await waitForMessage(wsB, (m) => m.type === 'welcome');
+  const welcomeA = await welcomeAPromise;
+  const welcomeB = await welcomeBPromise;
 
   check('welcome A has a playerId', typeof welcomeA.playerId === 'string' && welcomeA.playerId.length > 0);
   check('welcome B has a playerId', typeof welcomeB.playerId === 'string' && welcomeB.playerId.length > 0);

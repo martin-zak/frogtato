@@ -20,7 +20,7 @@ import {
   type Phase,
   type ServerMsg,
 } from '@frogtato/shared';
-import { applyInput, createPlayer, stepPlayerMovement, toPlayerSnap, type PlayerState } from './sim/players.js';
+import { applyInput, createPlayer, setWeaponSlot, stepPlayerMovement, toPlayerSnap, type PlayerState } from './sim/players.js';
 import * as combat from './sim/combat.js';
 import {
   createInterimSpawnerState,
@@ -38,6 +38,7 @@ import {
   toProjectileSnap,
   type ProjectileState,
 } from './sim/projectiles.js';
+import { stepPlayerWeapons } from './sim/weapons.js';
 
 export interface RoomCallbacks {
   broadcast(msg: ServerMsg): void;
@@ -139,7 +140,7 @@ export class Room {
       if (msg.invincible) this.invinciblePlayers.add(player.id);
       else this.invinciblePlayers.delete(player.id);
     }
-    if (msg.give !== undefined) console.warn('[frogtato] debug "give" not implemented until T6');
+    if (msg.give !== undefined) setWeaponSlot(player, msg.give.slot, msg.give.weapon, msg.give.level);
     if (msg.timescale !== undefined) console.warn('[frogtato] debug "timescale" not implemented until T8');
   }
 
@@ -188,6 +189,7 @@ export class Room {
 
     stepInterimSpawner(this.spawner, FIXED_DT_SEC, this.enemies, this.players.values(), this.nextEnemyId);
     this.stepEnemies();
+    this.stepWeapons();
     this.stepProjectiles();
     stepFlies(this.flies, this.players.values(), FIXED_DT_SEC);
 
@@ -213,6 +215,19 @@ export class Room {
     }
   }
 
+  private stepWeapons(): void {
+    for (const player of this.players.values()) {
+      stepPlayerWeapons(player, {
+        enemies: this.enemies,
+        dtSec: FIXED_DT_SEC,
+        emit: (event) => this.emit(event),
+        spawnProjectile: (projectile) => this.projectiles.set(projectile.id, projectile),
+        nextProjectileId: this.nextProjectileId,
+        spawnFlies: (x, y, count) => spawnFliesAt(this.nextFlyId, x, y, count, this.flies),
+      });
+    }
+  }
+
   private stepProjectiles(): void {
     for (const projectile of Array.from(this.projectiles.values())) {
       stepProjectile(projectile, FIXED_DT_SEC);
@@ -222,8 +237,9 @@ export class Room {
         continue;
       }
 
-      // T5 only implements enemy-sourced projectiles hitting players; T6 adds
-      // the player-sourced (bubble) branch hitting enemies alongside this.
+      // Collision target set is data-driven by `source`: enemy projectiles (acid)
+      // hit players, player projectiles (bubble) hit enemies. Kept as one loop
+      // so future projectile kinds only need a new branch here, not a new caller.
       if (projectile.source === 'enemy') {
         for (const player of this.players.values()) {
           if (player.downed || player.spectator || this.invinciblePlayers.has(player.id)) continue;
@@ -231,6 +247,22 @@ export class Room {
             continue;
           }
           combat.damagePlayer(player, projectile.damage, (event) => this.emit(event));
+          this.projectiles.delete(projectile.id);
+          break;
+        }
+      } else if (projectile.source === 'player') {
+        for (const enemy of this.enemies.values()) {
+          const radius = combat.ENEMY_RADIUS[ENEMY_KIND_BY_TYPE[enemy.type]];
+          if (!circlesOverlap(projectile.x, projectile.y, projectile.radius, enemy.x, enemy.y, radius)) continue;
+          const died = combat.damageEnemy(
+            enemy,
+            ENEMY_KIND_BY_TYPE[enemy.type],
+            ENEMY_DEFS[enemy.type].flyDrop,
+            projectile.damage,
+            (event) => this.emit(event),
+            (x, y, count) => spawnFliesAt(this.nextFlyId, x, y, count, this.flies),
+          );
+          if (died) this.enemies.delete(enemy.id);
           this.projectiles.delete(projectile.id);
           break;
         }
