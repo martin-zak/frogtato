@@ -14,19 +14,21 @@ export function makeIdFactory(prefix: string): () => string {
 }
 
 /**
- * Fixed shop offer ids (DESIGN §7). Both halves of shared/ agree on these
- * literal strings: this file defines them for the protocol side, and
- * shared/src/constants.ts (owned separately) keys its catalog table by the
- * same ids.
+ * Fixed shop offer ids (DESIGN §7), matching the `id` fields in
+ * shared/src/constants.ts (SHOP_CATALOG / STAT_SHOP_OFFERS). Weapon-slot
+ * upgrades have no catalog row (they're priced per target level via
+ * WEAPON_UPGRADE_PRICES), so their id lives only here.
  */
+export const UPGRADE_OFFER_ID = "upgradeSlot";
+
 export const OFFER_IDS = [
-  "buy-tongue",
-  "buy-bubble",
-  "buy-croak",
-  "upgrade-slot",
-  "stat-hp",
-  "stat-damage",
-  "stat-speed",
+  "buyTongueLash",
+  "buyBubbleBlaster",
+  "buyCroakNova",
+  UPGRADE_OFFER_ID,
+  "buyMaxHp",
+  "buyDamage",
+  "buyMoveSpeed",
 ] as const satisfies readonly string[];
 
 export type OfferId = (typeof OFFER_IDS)[number];

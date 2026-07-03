@@ -117,15 +117,15 @@ describe("protocol message unions", () => {
     expect(msg.players).toEqual([]);
   });
 
-  it("OFFER_IDS lists exactly the DESIGN §7 catalog ids", () => {
+  it("OFFER_IDS matches the SHOP_CATALOG/STAT_SHOP_OFFERS ids plus the upgrade id", () => {
     expect(OFFER_IDS).toEqual([
-      "buy-tongue",
-      "buy-bubble",
-      "buy-croak",
-      "upgrade-slot",
-      "stat-hp",
-      "stat-damage",
-      "stat-speed",
+      "buyTongueLash",
+      "buyBubbleBlaster",
+      "buyCroakNova",
+      "upgradeSlot",
+      "buyMaxHp",
+      "buyDamage",
+      "buyMoveSpeed",
     ]);
   });
 

@@ -8,6 +8,10 @@ import { interpolateSnapshot } from "../interp.js";
 import type { NetClient } from "../net.js";
 import { EntityRenderer } from "../render/entities.js";
 import { EffectsController } from "../render/effects.js";
+import { Hud } from "../ui/hud.js";
+import { AllyIndicators } from "../ui/allyIndicators.js";
+import { routeToPhase } from "../ui/phaseRouter.js";
+import { captureEndScreenEvent } from "../ui/endScreenStore.js";
 
 interface InputState {
   up: boolean;
@@ -27,7 +31,10 @@ export class GameScene extends Phaser.Scene {
 
   private entityRenderer!: EntityRenderer;
   private effects!: EffectsController;
+  private hud!: Hud;
+  private allyIndicators!: AllyIndicators;
   private unsubscribeEvents: (() => void) | null = null;
+  private unsubscribePhase: (() => void) | null = null;
 
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd!: { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key };
@@ -55,11 +62,20 @@ export class GameScene extends Phaser.Scene {
 
     this.entityRenderer = new EntityRenderer(this);
     this.effects = new EffectsController(this, this.entityRenderer);
+    this.hud = new Hud(this, this.net);
+    this.allyIndicators = new AllyIndicators(this);
     this.unsubscribeEvents = this.net.onEvent((event) => {
       const renderTime = Date.now() - INTERP_DELAY_MS;
       const state = interpolateSnapshot(this.net.getSnapshots(), renderTime);
       this.effects.handleEvent(event, state.players);
+      // gameOver/victory fire while this scene is still active (the
+      // server flips phase to "scoreboard" only on the *next* snapshot);
+      // capture it here so GameOverScene has the scoreboard once phase
+      // routing lands there a moment later.
+      captureEndScreenEvent(event);
     });
+
+    this.unsubscribePhase = this.net.onSnapshot((snap) => routeToPhase(this, snap.phase));
 
     this.followTarget = this.add.rectangle(ARENA.width / 2, ARENA.height / 2, 1, 1, 0x000000, 0);
     this.cameras.main.setBounds(0, 0, ARENA.width, ARENA.height);
@@ -75,7 +91,11 @@ export class GameScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.unsubscribeEvents?.();
       this.unsubscribeEvents = null;
+      this.unsubscribePhase?.();
+      this.unsubscribePhase = null;
       this.entityRenderer.destroy();
+      this.hud.destroy();
+      this.allyIndicators.destroy();
     });
   }
 
@@ -124,6 +144,8 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.entityRenderer.update(state, this.net.playerId, deltaMs);
+    this.hud.update();
+    this.allyIndicators.update(state.players, this.net.playerId);
   }
 
   private drawArena(): void {

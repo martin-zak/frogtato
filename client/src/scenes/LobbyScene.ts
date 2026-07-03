@@ -1,14 +1,18 @@
 // Lobby scene: shows connection status + the list of connected players
 // (name/color, from the live snapshot buffer) and a Start button.
 //
-// Per PLAN T4: the phase machine (T8) doesn't exist yet, so the server is
-// always in phase "wave". As soon as we see that — in `welcome` or in any
-// snapshot — skip straight to GameScene instead of waiting at the button.
+// Scene transitions are purely phase-driven (DESIGN §8/§9): every
+// welcome/snapshot routes through phaseRouter.ts rather than this scene
+// hand-rolling its own rule. Historically (PLAN T4) the server hardcoded
+// phase "wave", so a client landing in "wave" on `welcome` skipped straight
+// to GameScene — that behavior still falls out of the same phase-routing
+// call now that T8's real phase machine exists.
 
 import Phaser from "phaser";
-import { PLAYER_COLORS, PLAYER_COLOR_ORDER } from "@frogtato/shared";
+import { MAX_PLAYERS, PLAYER_COLORS, PLAYER_COLOR_ORDER } from "@frogtato/shared";
 import type { PlayerSnap } from "@frogtato/shared";
 import type { NetClient, ConnectionStatus } from "../net.js";
+import { routeToPhase } from "../ui/phaseRouter.js";
 
 function colorHexFor(colorIndex: number): string {
   const name = PLAYER_COLOR_ORDER[colorIndex % PLAYER_COLOR_ORDER.length];
@@ -18,16 +22,15 @@ function colorHexFor(colorIndex: number): string {
 export class LobbyScene extends Phaser.Scene {
   private net!: NetClient;
   private statusText!: Phaser.GameObjects.Text;
+  private countText!: Phaser.GameObjects.Text;
   private playerListText!: Phaser.GameObjects.Text;
   private unsubscribers: Array<() => void> = [];
-  private started = false;
 
   constructor() {
     super("Lobby");
   }
 
   create(): void {
-    this.started = false;
     this.net = this.registry.get("net") as NetClient;
 
     this.cameras.main.setBackgroundColor("#0a2233");
@@ -49,8 +52,8 @@ export class LobbyScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    this.add
-      .text(this.scale.width / 2, 190, "Players", {
+    this.countText = this.add
+      .text(this.scale.width / 2, 190, `0/${MAX_PLAYERS} frogs in the pond`, {
         fontFamily: "sans-serif",
         fontSize: "22px",
         color: "#e8f5e9",
@@ -84,12 +87,10 @@ export class LobbyScene extends Phaser.Scene {
 
     this.unsubscribers.push(
       this.net.onStatus((status) => this.renderStatus(status)),
-      this.net.onWelcome((msg) => {
-        if (msg.phase === "wave") this.goToGame();
-      }),
+      this.net.onWelcome((msg) => routeToPhase(this, msg.phase)),
       this.net.onSnapshot((snap) => {
         this.renderPlayers(snap.players);
-        if (snap.phase === "wave") this.goToGame();
+        routeToPhase(this, snap.phase);
       }),
     );
 
@@ -108,6 +109,9 @@ export class LobbyScene extends Phaser.Scene {
   }
 
   private renderPlayers(players: PlayerSnap[]): void {
+    const nonSpectators = players.filter((p) => !p.spectator);
+    this.countText.setText(`${nonSpectators.length}/${MAX_PLAYERS} frogs in the pond`);
+
     if (players.length === 0) {
       this.playerListText.setText("waiting for players…");
       return;
@@ -137,11 +141,5 @@ export class LobbyScene extends Phaser.Scene {
       const swatch = this.add.rectangle(startX + i * 28, baseY, 20, 20, hex);
       this.swatches.push(swatch);
     });
-  }
-
-  private goToGame(): void {
-    if (this.started) return;
-    this.started = true;
-    this.scene.start("Game");
   }
 }
