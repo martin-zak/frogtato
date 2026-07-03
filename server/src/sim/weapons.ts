@@ -85,13 +85,19 @@ function firstEnemyOnSegment(
 /**
  * Applies `amount` damage to `enemy` via combat.damageEnemy; removes it from
  * `enemies` on death. Also attributes the damage/kill to `player`'s scoreboard
- * counters (DESIGN §8 end-of-run scoreboard).
+ * counters (DESIGN §8 end-of-run scoreboard). Phase 2 §4: while the Snail
+ * King is in its shell phase, incoming damage is flatly reduced by
+ * `shellArmor` (min 1), same rule as player armor.
  */
 function hitEnemy(player: PlayerState, enemy: EnemyState, amount: number, ctx: WeaponContext): void {
   const kind = ENEMY_KIND_BY_TYPE[enemy.type];
   const flyDrop = ENEMY_DEFS[enemy.type].flyDrop;
-  player.damageDealt += amount;
-  const died = combat.damageEnemy(enemy, kind, flyDrop, amount, ctx.emit, ctx.spawnFlies);
+  const mitigated =
+    enemy.boss && enemy.boss.shellRemainingSec > 0
+      ? combat.mitigateFlatArmor(amount, ENEMY_DEFS.snailKing.shellArmor)
+      : amount;
+  player.damageDealt += mitigated;
+  const died = combat.damageEnemy(enemy, kind, flyDrop, mitigated, ctx.emit, ctx.spawnFlies);
   if (died) {
     player.killCount += 1;
     ctx.enemies.delete(enemy.id);

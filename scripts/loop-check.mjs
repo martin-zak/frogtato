@@ -195,11 +195,31 @@ async function runA() {
   let shopEnteredAt;
   let shopExitedAt;
 
+  // Phase 2 §4: wave 5's last spawnAtRemainingSec now spawns the Snail King
+  // finale and *freezes* the wave-5 timer while it lives — victory only
+  // follows a debug-kill (or natural death / the hard-cap survival clause),
+  // never the plain wave timer anymore. Wait for `bossSpawned`, then
+  // debug-kill it so this run's victory path completes.
+  const bossSpawnedEvent = await waitUntil(
+    () => bot.events.find((e) => e.type === 'bossSpawned'),
+    { timeoutMs: 60000 },
+  );
+  check('(A) "bossSpawned" event fires during wave 5', Boolean(bossSpawnedEvent));
+
+  const bossSnap = await waitUntil(
+    () => latestSnapshot(bot)?.enemies?.find((e) => e.kind === 'snailking'),
+    { timeoutMs: 5000 },
+  );
+  if (bossSnap) bot.ws.send(JSON.stringify({ type: 'debug', kill: bossSnap.id }));
+
   const sawVictory = await waitUntil(
     () => bot.events.find((e) => e.type === 'victory'),
     { timeoutMs: 60000 },
   );
   check('(A) a "victory" event was received', Boolean(sawVictory));
+
+  const sawBossDied = bot.events.find((e) => e.type === 'bossDied');
+  check('(A) "bossDied" event fires from the debug-kill, before victory', Boolean(sawBossDied) && Boolean(sawVictory) && sawBossDied._recvAt <= sawVictory._recvAt);
 
   for (const entry of bot.phaseLog) {
     if (entry.phase === 'shop' && shopEnteredAt === undefined) shopEnteredAt = entry.atMs;

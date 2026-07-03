@@ -18,11 +18,13 @@ import {
   WAVES,
   WAVE_COUNT,
   makeIdFactory,
+  playerFactor,
   type ClientDebugMsg,
   type ClientMsg,
   type GameEvent,
   type Phase,
   type ServerMsg,
+  type WaveDef,
 } from '@frogtato/shared';
 import {
   applyClassLoadout,
@@ -35,7 +37,14 @@ import {
   type PlayerState,
 } from './sim/players.js';
 import * as combat from './sim/combat.js';
-import { ENEMY_KIND_BY_TYPE, stepEnemyAi, toEnemySnap, type EnemyState } from './sim/enemies.js';
+import {
+  createEnemy,
+  ENEMY_KIND_BY_TYPE,
+  pickFarthestArenaEdgePoint,
+  stepEnemyAi,
+  toEnemySnap,
+  type EnemyState,
+} from './sim/enemies.js';
 import { spawnFliesAt, stepFlies, toFlySnap, type FlyState } from './sim/flies.js';
 import {
   circlesOverlap,
@@ -94,6 +103,12 @@ export class Room {
   private projectiles = new Map<string, ProjectileState>();
   private flies = new Map<string, FlyState>();
   private waveDirector: WaveDirectorState = createWaveDirectorState();
+  /** Phase 2 §4: set to the Snail King's enemy id once it spawns (wave 5's
+   * last 20s), undefined otherwise. Its presence is what freezes the wave-5
+   * timer and stops regular spawns — see stepBossWaveSpawning/checkBossOutcome. */
+  private bossId: string | undefined;
+  /** Seconds elapsed since the boss spawned — drives the hardCapExtraSec survival clause. */
+  private bossElapsedSec = 0;
   // Debug-only (T5): NODE_ENV gate lives at the message-routing layer (net.ts).
   private invinciblePlayers = new Set<string>();
   /** Debug-only (T8): multiplies simulated dt per tick, clamped 1..20. */
@@ -318,6 +333,8 @@ export class Room {
     this.enemies.clear();
     this.projectiles.clear();
     this.flies.clear();
+    this.bossId = undefined;
+    this.bossElapsedSec = 0;
     this.wave = 1;
     this.enterWavePhase();
   }
@@ -367,6 +384,8 @@ export class Room {
     this.enemies.clear();
     this.projectiles.clear();
     this.flies.clear();
+    this.bossId = undefined;
+    this.bossElapsedSec = 0;
     this.emit({ type: 'gameOver', scoreboard: buildScoreboard(this.players.values()) });
     this.enterScoreboardPhase();
   }
@@ -391,6 +410,12 @@ export class Room {
   /** Ticks the current phase's countdown (simulated time, scaled by debug timescale) and transitions on expiry. */
   private stepPhaseTimer(dtSec: number): void {
     if (this.phaseRemainingSec === undefined) return;
+    // Phase 2 §4: the wave-5 timer freezes for as long as the Snail King
+    // boss is alive (phaseEndsAt, derived from phaseRemainingSec in
+    // broadcastSnapshot, is effectively "pushed" out with it). The finale
+    // ends via checkBossOutcome (boss death or the hardCapExtraSec survival
+    // clause), never via this timer, while the boss lives.
+    if (this.phase === 'wave' && this.bossId !== undefined) return;
     this.phaseRemainingSec -= dtSec;
     if (this.phaseRemainingSec > 0) return;
 
@@ -441,7 +466,11 @@ export class Room {
 
   private stepWaveSim(dt: number): void {
     const waveDef = WAVES[this.wave - 1]!;
-    stepWaveDirector(this.waveDirector, waveDef, dt, this.playerCount, this.enemies, this.players.values(), this.nextEnemyId);
+    if (waveDef.bossWave) {
+      this.stepBossWaveSpawning(dt, waveDef);
+    } else {
+      stepWaveDirector(this.waveDirector, waveDef, dt, this.playerCount, this.enemies, this.players.values(), this.nextEnemyId);
+    }
     this.stepEnemies(dt);
     this.stepWeapons(dt);
     this.stepProjectiles(dt);
@@ -451,6 +480,70 @@ export class Room {
 
     if (allActivePlayersDowned(this.players.values())) {
       this.triggerGameOver();
+      return;
+    }
+
+    if (waveDef.bossWave) this.checkBossOutcome();
+  }
+
+  // ---------------------------------------------------------------------
+  // Phase 2 §4: Snail King finale (wave 5's last spawnAtRemainingSec).
+  // ---------------------------------------------------------------------
+
+  /** Pre-spawn: regular wave-5 spawns continue as normal until the wave
+   * timer crosses spawnAtRemainingSec, then the boss spawns and — because
+   * this function stops calling stepWaveDirector once `bossId` is set —
+   * regular spawns stop (DESIGN-PHASE2.md §4: "despawn nothing", just no new
+   * ones). Post-spawn: tracks elapsed time for the hard-cap survival clause. */
+  private stepBossWaveSpawning(dt: number, waveDef: WaveDef): void {
+    if (this.bossId === undefined) {
+      stepWaveDirector(this.waveDirector, waveDef, dt, this.playerCount, this.enemies, this.players.values(), this.nextEnemyId);
+      const remaining = this.phaseRemainingSec ?? Infinity;
+      if (remaining <= ENEMY_DEFS.snailKing.spawnAtRemainingSec) this.spawnBoss();
+      return;
+    }
+    this.bossElapsedSec += dt;
+  }
+
+  private spawnBoss(): void {
+    const point = pickFarthestArenaEdgePoint(this.players.values());
+    const boss = createEnemy(this.nextEnemyId(), 'snailKing', point.x, point.y);
+    // Bosses scale with player count like spawn caps do (playerFactor), not
+    // with the wave-HP curve (enemyHpMultiplier) — there's only one wave-5
+    // boss, so enemyHpMultiplier's per-wave ramp doesn't apply here
+    // (constants.ts SnailKingDef doc comment).
+    const factor = playerFactor(this.playerCount);
+    boss.hp *= factor;
+    boss.maxHp *= factor;
+    this.enemies.set(boss.id, boss);
+    this.bossId = boss.id;
+    this.bossElapsedSec = 0;
+    this.emit({ type: 'bossSpawned' });
+  }
+
+  /** Called every wave-5 tick after combat resolves: ends the finale either
+   * because the boss died (any damage source — weapon, projectile, or debug
+   * kill, all of which delete it from `this.enemies`), or because it
+   * survived hardCapExtraSec past spawn (DESIGN-PHASE2.md §4 survival
+   * clause: victory anyway, but WITHOUT a bossDied event — the boss never
+   * actually died, the run just ends). Reuses endWave()'s existing
+   * wave>=WAVE_COUNT victory branch (wave 5 always satisfies it). */
+  private checkBossOutcome(): void {
+    if (this.bossId === undefined) return;
+
+    if (!this.enemies.has(this.bossId)) {
+      this.bossId = undefined;
+      this.bossElapsedSec = 0;
+      this.emit({ type: 'bossDied' });
+      this.endWave();
+      return;
+    }
+
+    if (this.bossElapsedSec >= ENEMY_DEFS.snailKing.hardCapExtraSec) {
+      this.enemies.delete(this.bossId);
+      this.bossId = undefined;
+      this.bossElapsedSec = 0;
+      this.endWave();
     }
   }
 
@@ -462,6 +555,10 @@ export class Room {
         onContactDamage: (_wasp, target) => {
           if (this.invinciblePlayers.has(target.id)) return;
           combat.damagePlayer(target, ENEMY_DEFS.wasp.contactDamage, (event) => this.emit(event));
+        },
+        onSwoopDamage: (_enemy, target, amount) => {
+          if (this.invinciblePlayers.has(target.id)) return;
+          combat.damagePlayer(target, amount, (event) => this.emit(event));
         },
         spawnProjectile: (projectile) => this.projectiles.set(projectile.id, projectile),
         nextProjectileId: this.nextProjectileId,
@@ -509,12 +606,19 @@ export class Room {
           const radius = combat.ENEMY_RADIUS[ENEMY_KIND_BY_TYPE[enemy.type]];
           if (!circlesOverlap(projectile.x, projectile.y, projectile.radius, enemy.x, enemy.y, radius)) continue;
           const owner = this.players.get(projectile.ownerId);
-          if (owner) owner.damageDealt += projectile.damage;
+          // Phase 2 §4: shell phase flatly reduces incoming damage (min 1),
+          // same rule as player armor — see sim/weapons.ts's hitEnemy for the
+          // melee/aoe equivalent (bubble projectiles resolve here instead).
+          const mitigatedDamage =
+            enemy.boss && enemy.boss.shellRemainingSec > 0
+              ? combat.mitigateFlatArmor(projectile.damage, ENEMY_DEFS.snailKing.shellArmor)
+              : projectile.damage;
+          if (owner) owner.damageDealt += mitigatedDamage;
           const died = combat.damageEnemy(
             enemy,
             ENEMY_KIND_BY_TYPE[enemy.type],
             ENEMY_DEFS[enemy.type].flyDrop,
-            projectile.damage,
+            mitigatedDamage,
             (event) => this.emit(event),
             (x, y, count) => spawnFliesAt(this.nextFlyId, x, y, count, this.flies),
           );

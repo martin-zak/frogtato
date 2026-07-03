@@ -16,7 +16,8 @@
     "check:weapons": "node scripts/weapons-check.mjs",
     "check:loop": "node scripts/loop-check.mjs",
     "check:shop": "node scripts/shop-check.mjs",
-    "check:class": "node scripts/class-check.mjs"
+    "check:class": "node scripts/class-check.mjs",
+    "check:boss": "node scripts/boss-check.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",

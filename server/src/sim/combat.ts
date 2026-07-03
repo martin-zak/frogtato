@@ -36,6 +36,15 @@ export interface DamagePlayerResult {
 }
 
 /**
+ * Flat damage-reduction rule shared by player armor (Phase 2 §2) and the
+ * Snail King's shell phase (Phase 2 §4): subtract `armor` from `amount`,
+ * never below 1 damage taken.
+ */
+export function mitigateFlatArmor(amount: number, armor: number): number {
+  return Math.max(1, amount - armor);
+}
+
+/**
  * Applies damage to a player: emits `playerHit`, and on hp<=0 sets `downed`
  * and emits `playerDowned` (DESIGN §2: downed = spectates for the rest of the
  * wave; revive is T8's job — this function never revives). No-op on players
@@ -51,7 +60,7 @@ export function damagePlayer(
   if (player.downed || player.spectator || !player.connected) return { applied: false, newlyDowned: false };
 
   // Phase 2 §2: armor is a flat reduction per hit, min 1 damage taken.
-  const mitigated = Math.max(1, amount - player.stats.armor);
+  const mitigated = mitigateFlatArmor(amount, player.stats.armor);
   player.hp = Math.max(0, player.hp - mitigated);
   emit({ type: 'playerHit', playerId: player.id, amount: mitigated });
 

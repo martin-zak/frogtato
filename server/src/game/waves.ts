@@ -42,10 +42,12 @@ function currentSpawnIntervalSec(waveDef: WaveDef, waveElapsedSec: number): numb
 }
 
 function pickEnemyType(spawnMix: WaveDef['spawnMix']): EnemyTypeInternal {
-  const total = spawnMix.wasp + spawnMix.snailSpitter;
+  const total = spawnMix.wasp + spawnMix.snailSpitter + spawnMix.heron;
   if (total <= 0) return 'wasp';
   const r = Math.random() * total;
-  return r < spawnMix.wasp ? 'wasp' : 'snailSpitter';
+  if (r < spawnMix.wasp) return 'wasp';
+  if (r < spawnMix.wasp + spawnMix.snailSpitter) return 'snailSpitter';
+  return 'heron';
 }
 
 /**
