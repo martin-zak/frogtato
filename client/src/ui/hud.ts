@@ -58,6 +58,9 @@ export class Hud {
   private hpText: Phaser.GameObjects.Text;
 
   private flyText: Phaser.GameObjects.Text;
+  /** Last-seen own fly count, to detect increases and trigger the pop tween
+   * below (PLAN T11 "feel") — only for the local player's own pickups. */
+  private lastFlies: number | null = null;
 
   private slots: SlotUi[];
 
@@ -204,7 +207,26 @@ export class Hud {
   }
 
   private updateFlies(own: PlayerSnap | undefined): void {
-    this.flyText.setText(`${own?.flies ?? 0} 🪰`);
+    const flies = own?.flies ?? 0;
+    this.flyText.setText(`${flies} 🪰`);
+
+    if (this.lastFlies !== null && flies > this.lastFlies) {
+      this.popFlyText();
+    }
+    this.lastFlies = flies;
+  }
+
+  /** Small scale-pop on the fly counter (subtle: ~1.15x over ~150ms, back
+   * down) — triggered only when the local player's own fly count goes up. */
+  private popFlyText(): void {
+    this.flyText.setScale(1);
+    this.scene.tweens.add({
+      targets: this.flyText,
+      scale: 1.15,
+      duration: 75,
+      yoyo: true,
+      ease: "Quad.Out",
+    });
   }
 
   private updateSlots(own: PlayerSnap | undefined): void {

@@ -97,7 +97,7 @@ function nearestLivingTarget(x: number, y: number, players: Iterable<PlayerState
   let best: PlayerState | undefined;
   let bestDist = Infinity;
   for (const p of players) {
-    if (p.downed || p.spectator) continue;
+    if (p.downed || p.spectator || !p.connected) continue;
     const d = Math.hypot(p.x - x, p.y - y);
     if (d < bestDist) {
       bestDist = d;

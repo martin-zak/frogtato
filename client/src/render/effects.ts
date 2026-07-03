@@ -6,6 +6,7 @@
 import Phaser from "phaser";
 import { WEAPON_DEFS } from "@frogtato/shared";
 import type { GameEvent, PlayerSnap, WeaponKind, WeaponType, WeaponLevel } from "@frogtato/shared";
+import type { NetClient } from "../net.js";
 import { SPRITE_KEYS, SFX_KEYS } from "./assetKeys.js";
 import type { EntityRenderer } from "./entities.js";
 
@@ -14,6 +15,13 @@ const CROAK_TWEEN_MS = 350;
 const HIT_FLASH_MS = 100;
 const POOF_TWEEN_MS = 250;
 const DEFAULT_WEAPON_LEVEL: WeaponLevel = 1;
+
+// Screen shake on taking (own) damage — small and quick, deliberately subtle
+// (PLAN T11 "feel"): ~80ms, ~4px of amplitude. Phaser's shake intensity is a
+// fraction of the camera's *view* size, not an absolute pixel amount, so the
+// fraction is computed per-shake from the camera's actual height.
+const HIT_SHAKE_MS = 80;
+const HIT_SHAKE_PX = 4;
 
 /** WeaponKind (protocol, e.g. "croak") -> WeaponType (balance data, e.g. "croakNova"). */
 const WEAPON_KIND_TO_TYPE: Readonly<Record<WeaponKind, WeaponType>> = {
@@ -31,10 +39,12 @@ const SFX_BY_WEAPON_KIND: Readonly<Record<WeaponKind, string>> = {
 export class EffectsController {
   private scene: Phaser.Scene;
   private entityRenderer: EntityRenderer;
+  private net: NetClient;
 
-  constructor(scene: Phaser.Scene, entityRenderer: EntityRenderer) {
+  constructor(scene: Phaser.Scene, entityRenderer: EntityRenderer, net: NetClient) {
     this.scene = scene;
     this.entityRenderer = entityRenderer;
+    this.net = net;
   }
 
   /** Handles a single server GameEvent. `latestPlayers` is the most recent
@@ -48,6 +58,9 @@ export class EffectsController {
       case "playerHit":
         this.handlePlayerHit(event.playerId);
         this.playSfx(SFX_KEYS.hit);
+        // Own damage only (PLAN T11): a brief, subtle screen shake — never
+        // triggered by other players getting hit.
+        if (event.playerId === this.net.playerId) this.shakeOnOwnHit();
         break;
       case "enemyDied":
         this.handleEnemyDied(event.x, event.y);
@@ -123,6 +136,12 @@ export class EffectsController {
       ease: "Cubic.Out",
       onComplete: () => sprite.destroy(),
     });
+  }
+
+  private shakeOnOwnHit(): void {
+    const camera = this.scene.cameras.main;
+    const intensity = HIT_SHAKE_PX / camera.height;
+    camera.shake(HIT_SHAKE_MS, intensity);
   }
 
   private handlePlayerHit(playerId: string): void {

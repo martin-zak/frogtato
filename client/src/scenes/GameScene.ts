@@ -85,7 +85,7 @@ export class GameScene extends Phaser.Scene {
     this.drawLilypads();
 
     this.entityRenderer = new EntityRenderer(this);
-    this.effects = new EffectsController(this, this.entityRenderer);
+    this.effects = new EffectsController(this, this.entityRenderer, this.net);
     this.hud = new Hud(this, this.net);
     this.allyIndicators = new AllyIndicators(this);
     this.unsubscribeEvents = this.net.onEvent((event) => {

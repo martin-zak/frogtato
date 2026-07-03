@@ -45,7 +45,7 @@ export function spawnFliesAt(
  * player.flies += 1) on contact. Flies with no player in range hold still.
  */
 export function stepFlies(flies: Map<string, FlyState>, players: Iterable<PlayerState>, dtSec: number): void {
-  const livingPlayers = Array.from(players).filter((p) => !p.downed && !p.spectator);
+  const livingPlayers = Array.from(players).filter((p) => !p.downed && !p.spectator && p.connected);
   if (livingPlayers.length === 0) return;
 
   for (const fly of Array.from(flies.values())) {

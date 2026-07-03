@@ -20,7 +20,7 @@ export function clampTimescale(value: number): number {
 export function allActivePlayersDowned(players: Iterable<PlayerState>): boolean {
   let any = false;
   for (const p of players) {
-    if (p.spectator) continue;
+    if (p.spectator || !p.connected) continue;
     any = true;
     if (!p.downed) return false;
   }
@@ -30,7 +30,7 @@ export function allActivePlayersDowned(players: Iterable<PlayerState>): boolean 
 /** Heals every non-downed, non-spectator player to full HP (DESIGN §7: full heal each wave). */
 export function healActivePlayers(players: Iterable<PlayerState>): void {
   for (const p of players) {
-    if (p.downed || p.spectator) continue;
+    if (p.downed || p.spectator || !p.connected) continue;
     p.hp = p.maxHp;
   }
 }
@@ -38,7 +38,7 @@ export function healActivePlayers(players: Iterable<PlayerState>): void {
 /** Revives downed players at REVIVE_HP_PCT of max HP (DESIGN §2: happens when the next wave starts). */
 export function reviveDownedPlayers(players: Iterable<PlayerState>): void {
   for (const p of players) {
-    if (!p.downed) continue;
+    if (!p.downed || !p.connected) continue;
     p.downed = false;
     p.hp = Math.max(1, Math.round(p.maxHp * REVIVE_HP_PCT));
   }
@@ -67,7 +67,7 @@ export function resetReadyFlags(players: Iterable<PlayerState>): void {
 export function allActivePlayersReady(players: Iterable<PlayerState>): boolean {
   let any = false;
   for (const p of players) {
-    if (p.spectator) continue;
+    if (p.spectator || !p.connected) continue;
     any = true;
     if (!p.ready) return false;
   }
@@ -109,7 +109,7 @@ export function resetPlayerForNewRun(player: PlayerState): void {
  * via gameover before the timer, not this path.
  */
 export function vacuumFliesToNearestPlayer(flies: Map<string, FlyState>, players: Iterable<PlayerState>): void {
-  const living = Array.from(players).filter((p) => !p.downed && !p.spectator);
+  const living = Array.from(players).filter((p) => !p.downed && !p.spectator && p.connected);
   if (living.length > 0) {
     for (const fly of flies.values()) {
       let best = living[0]!;

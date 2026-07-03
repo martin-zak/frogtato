@@ -10,6 +10,7 @@ import {
   ENEMY_DEFS,
   MAX_PLAYERS,
   PLAYER_COLOR_ORDER,
+  RECONNECT_GRACE_SEC,
   SCOREBOARD_DURATION_SEC,
   SHOP_DURATION_SEC,
   SIM_HZ,
@@ -92,6 +93,11 @@ export class Room {
   private nextProjectileId = makeIdFactory('projectile');
   private nextFlyId = makeIdFactory('fly');
 
+  /** Pending full-removal timers for disconnected players, keyed by playerId
+   * (T11 reconnect grace: RECONNECT_GRACE_SEC after a disconnect, cleared on
+   * either reconnect or grace expiry). */
+  private disconnectTimers = new Map<string, NodeJS.Timeout>();
+
   private tick = 0;
   private accumulatorSec = 0;
   private snapshotAccumulatorTicks = 0;
@@ -100,12 +106,20 @@ export class Room {
 
   constructor(private callbacks: RoomCallbacks) {}
 
+  /** Count of *connected* players — used for wave-difficulty scaling
+   * (playerFactor) and the room-full check. A player sitting in reconnect
+   * grace (T11, disconnected but not yet expired) shouldn't inflate
+   * difficulty for everyone else, and shouldn't block a new player from
+   * taking a live seat either — their reserved color/state just waits for
+   * them, uncounted, until they reconnect or the grace timer removes them. */
   get playerCount(): number {
-    return this.players.size;
+    let count = 0;
+    for (const p of this.players.values()) if (p.connected) count += 1;
+    return count;
   }
 
   isFull(): boolean {
-    return this.players.size >= MAX_PLAYERS;
+    return this.playerCount >= MAX_PLAYERS;
   }
 
   private nextFreeColorIndex(): number {
@@ -130,9 +144,59 @@ export class Room {
   }
 
   removePlayer(id: string): void {
+    const timer = this.disconnectTimers.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      this.disconnectTimers.delete(id);
+    }
     this.players.delete(id);
     this.invinciblePlayers.delete(id);
     resetShopCounts(id);
+  }
+
+  /**
+   * Websocket dropped mid-run (T11 reconnect, DESIGN §8): keep the player's
+   * full sim state (weapons/stats/flies/downed/playerId) in memory, marked
+   * `connected: false` so it's excluded from snapshots and every
+   * active-player gameplay check, for RECONNECT_GRACE_SEC. If no matching
+   * `hello {token}` arrives in that window, fully drop the state.
+   */
+  disconnectPlayer(id: string): void {
+    const player = this.players.get(id);
+    if (!player) return;
+    player.connected = false;
+    const timer = setTimeout(() => {
+      this.disconnectTimers.delete(id);
+      this.removePlayer(id);
+    }, RECONNECT_GRACE_SEC * 1000);
+    this.disconnectTimers.set(id, timer);
+  }
+
+  /**
+   * `hello {token}` arriving within the grace window: restores the same
+   * playerId with all preserved state. Returns undefined for an unknown/
+   * expired/already-connected token, which net.ts treats as a normal fresh
+   * join.
+   */
+  reconnectPlayer(token: string): PlayerState | undefined {
+    for (const player of this.players.values()) {
+      if (player.token !== token || player.connected) continue;
+      const timer = this.disconnectTimers.get(player.id);
+      if (timer) clearTimeout(timer);
+      this.disconnectTimers.delete(player.id);
+      player.connected = true;
+      return player;
+    }
+    return undefined;
+  }
+
+  /** Routing-layer defense in depth (T11): whether `input` from this player
+   * should be applied at all — false for unknown, downed, spectating, or
+   * disconnected-slot players. */
+  canAcceptInput(id: string): boolean {
+    const player = this.players.get(id);
+    if (!player) return false;
+    return !player.downed && !player.spectator && player.connected;
   }
 
   handleClientMsg(playerId: string, msg: ClientMsg): void {
@@ -400,7 +464,7 @@ export class Room {
       // so future projectile kinds only need a new branch here, not a new caller.
       if (projectile.source === 'enemy') {
         for (const player of this.players.values()) {
-          if (player.downed || player.spectator || this.invinciblePlayers.has(player.id)) continue;
+          if (player.downed || player.spectator || !player.connected || this.invinciblePlayers.has(player.id)) continue;
           if (!circlesOverlap(projectile.x, projectile.y, projectile.radius, player.x, player.y, combat.PLAYER_RADIUS)) {
             continue;
           }
@@ -434,16 +498,23 @@ export class Room {
   }
 
   private broadcastSnapshot(): void {
+    // Lobby has no combat, and disconnected (reconnect-grace) players' frogs
+    // are despawned from every client's view (T11) — both are cheap wins on
+    // snapshot payload size and keep the wire format honest about what's
+    // actually "there".
+    const isLobby = this.phase === 'lobby';
     const msg: ServerMsg = {
       type: 'snapshot',
       tick: this.tick,
       phase: this.phase,
       ...(this.wave > 0 ? { wave: this.wave } : {}),
       ...(this.phaseRemainingSec !== undefined ? { phaseEndsAt: Date.now() + this.phaseRemainingSec * 1000 } : {}),
-      players: Array.from(this.players.values(), toPlayerSnap),
-      enemies: Array.from(this.enemies.values(), toEnemySnap),
-      projectiles: Array.from(this.projectiles.values(), toProjectileSnap),
-      flies: Array.from(this.flies.values(), toFlySnap),
+      players: Array.from(this.players.values())
+        .filter((p) => p.connected)
+        .map(toPlayerSnap),
+      enemies: isLobby ? [] : Array.from(this.enemies.values(), toEnemySnap),
+      projectiles: isLobby ? [] : Array.from(this.projectiles.values(), toProjectileSnap),
+      flies: isLobby ? [] : Array.from(this.flies.values(), toFlySnap),
     };
     this.callbacks.broadcast(msg);
   }

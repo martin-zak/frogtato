@@ -10,6 +10,7 @@
 
 import { SERVER_PORT } from "@frogtato/shared";
 import type { ClientMsg, ServerMsg, GameEvent } from "@frogtato/shared";
+import { hideReconnectOverlay, showReconnectOverlay } from "./ui/reconnectOverlay.js";
 
 export type SnapshotMsg = Extract<ServerMsg, { type: "snapshot" }>;
 export type WelcomeMsg = Extract<ServerMsg, { type: "welcome" }>;
@@ -31,6 +32,11 @@ const SNAPSHOT_BUFFER_MS = 1000;
 
 const TOKEN_STORAGE_KEY = "frogtato:token";
 
+// Auto-reconnect backoff (T11, DESIGN §8): capped exponential, starting fast
+// so a brief network blip resolves almost instantly.
+const RECONNECT_BASE_MS = 500;
+const RECONNECT_MAX_MS = 8000;
+
 function loadStoredToken(): string | undefined {
   try {
     return globalThis.localStorage?.getItem(TOKEN_STORAGE_KEY) ?? undefined;
@@ -50,6 +56,9 @@ function storeToken(token: string): void {
 export class NetClient {
   private ws: WebSocket | null = null;
   private snapshots: TimedSnapshot[] = [];
+  private host: string = "";
+  private reconnectAttempts = 0;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   private snapshotListeners = new Set<Listener<SnapshotMsg>>();
   private welcomeListeners = new Set<Listener<WelcomeMsg>>();
@@ -60,16 +69,31 @@ export class NetClient {
   playerId: string | null = null;
   token: string | undefined = loadStoredToken();
 
-  /** Opens the websocket. `host` defaults to the page's own hostname. */
+  /** Opens the websocket. `host` defaults to the page's own hostname.
+   * Remembers `host` so a later auto-reconnect (see `scheduleReconnect`)
+   * targets the same server. */
   connect(host: string = defaultHost()): void {
-    const url = `ws://${host}:${SERVER_PORT}`;
+    this.host = host;
+    this.openSocket();
+  }
+
+  private openSocket(): void {
+    const url = `ws://${this.host}:${SERVER_PORT}`;
     this.setStatus("connecting");
 
     const ws = new WebSocket(url);
     this.ws = ws;
 
     ws.addEventListener("open", () => {
+      // A real connection landed: forget the backoff and drop the
+      // "reconnecting…" indicator (re-shown, if needed, the next time this
+      // socket closes).
+      this.reconnectAttempts = 0;
+      hideReconnectOverlay();
       this.setStatus("open");
+      // Reusing a previously-issued token (persisted in localStorage) is
+      // what lets the server's reconnect grace (T11) resume this player's
+      // state seamlessly instead of spawning a fresh one.
       this.send({ type: "hello", token: this.token });
     });
 
@@ -79,12 +103,28 @@ export class NetClient {
 
     ws.addEventListener("close", () => {
       this.setStatus("closed");
+      this.scheduleReconnect();
     });
 
     ws.addEventListener("error", () => {
       // The subsequent 'close' event carries the actionable state change;
       // nothing extra to do here beyond letting it happen.
     });
+  }
+
+  /** Capped exponential backoff auto-reconnect (T11): 0.5s, 1s, 2s, 4s,
+   * 8s, 8s, 8s, ... Shows the shared "reconnecting…" overlay for the
+   * duration; a single scene-agnostic module (reconnectOverlay.ts) owns
+   * that UI so no scene has to wire it up itself. */
+  private scheduleReconnect(): void {
+    if (this.reconnectTimer !== null) return; // already scheduled
+    showReconnectOverlay();
+    const delayMs = Math.min(RECONNECT_BASE_MS * 2 ** this.reconnectAttempts, RECONNECT_MAX_MS);
+    this.reconnectAttempts += 1;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      this.openSocket();
+    }, delayMs);
   }
 
   send(msg: ClientMsg): void {

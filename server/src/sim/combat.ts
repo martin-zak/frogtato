@@ -39,7 +39,7 @@ export function damagePlayer(
   amount: number,
   emit: (event: GameEvent) => void,
 ): DamagePlayerResult {
-  if (player.downed || player.spectator) return { applied: false, newlyDowned: false };
+  if (player.downed || player.spectator || !player.connected) return { applied: false, newlyDowned: false };
 
   player.hp = Math.max(0, player.hp - amount);
   emit({ type: 'playerHit', playerId: player.id, amount });

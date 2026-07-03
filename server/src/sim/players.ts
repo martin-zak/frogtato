@@ -55,6 +55,11 @@ export interface PlayerState {
   flies: number;
   downed: boolean;
   spectator: boolean;
+  /** False while the underlying websocket is disconnected but the player's
+   * state is still held for a possible reconnect (T11 reconnect grace). A
+   * disconnected player is excluded from snapshots and every "active
+   * player" gameplay check, but keeps weapons/stats/flies intact. */
+  connected: boolean;
   weapons: (WeaponSlot | null)[];
   /** Per-slot remaining cooldown (sec), parallel array to `weapons`. T6. */
   weaponCooldowns: number[];
@@ -79,6 +84,7 @@ export function createPlayer(id: string, colorIndex: number, token: string): Pla
     flies: 0,
     downed: false,
     spectator: false,
+    connected: true,
     weapons: [...STARTING_WEAPON_SLOTS],
     // Start ready-to-fire (0 cooldown) so a fresh loadout can act the instant
     // an enemy comes into range, rather than waiting out a full cooldown first.
@@ -118,7 +124,7 @@ function clampToArenaEllipse(x: number, y: number): { x: number; y: number } {
 
 /** Integrates one fixed sim step of movement for a single player, clamped to the arena. */
 export function stepPlayerMovement(player: PlayerState, dtSec: number): void {
-  if (player.downed || player.spectator) return;
+  if (player.downed || player.spectator || !player.connected) return;
 
   const { up, down, left, right } = player.input;
   let dx = (right ? 1 : 0) - (left ? 1 : 0);

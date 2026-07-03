@@ -152,7 +152,7 @@ function fireCroak(player: PlayerState, radius: number, damage: number, ctx: Wea
  * not fire into the void and its cooldown is not reset.
  */
 export function stepPlayerWeapons(player: PlayerState, ctx: WeaponContext): void {
-  if (player.downed || player.spectator) return;
+  if (player.downed || player.spectator || !player.connected) return;
 
   for (let slot = 0; slot < player.weapons.length; slot++) {
     const slotDef = player.weapons[slot];
