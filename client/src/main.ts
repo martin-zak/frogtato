@@ -1,7 +1,7 @@
 import Phaser from "phaser";
-import { SHARED_PLACEHOLDER } from "@frogtato/shared";
+import { SERVER_PORT } from "@frogtato/shared";
 
-console.log("[frogtato] shared placeholder:", SHARED_PLACEHOLDER);
+console.log("[frogtato] shared constants loaded, server port:", SERVER_PORT);
 
 class BootScene extends Phaser.Scene {
   create(): void {

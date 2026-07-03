@@ -1,10 +1,10 @@
 import { createServer } from "node:http";
 import { WebSocketServer } from "ws";
-import { SHARED_PLACEHOLDER } from "@frogtato/shared";
+import { SERVER_PORT } from "@frogtato/shared";
 
 const PORT = 8080;
 
-console.log("[frogtato] shared placeholder:", SHARED_PLACEHOLDER);
+console.log("[frogtato] shared constants loaded, server port:", SERVER_PORT);
 
 const httpServer = createServer((_req, res) => {
   res.writeHead(200, { "Content-Type": "text/plain" });
