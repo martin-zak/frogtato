@@ -1,31 +1,25 @@
 import Phaser from "phaser";
 import { SERVER_PORT } from "@frogtato/shared";
+import { NetClient } from "./net.js";
+import { BootScene } from "./scenes/BootScene.js";
+import { LobbyScene } from "./scenes/LobbyScene.js";
+import { GameScene } from "./scenes/GameScene.js";
 
-console.log("[frogtato] shared constants loaded, server port:", SERVER_PORT);
+console.log(`[frogtato] connecting to server on port ${SERVER_PORT}`);
 
-class BootScene extends Phaser.Scene {
-  create(): void {
-    this.cameras.main.setBackgroundColor("#101418");
-    this.add
-      .text(this.scale.width / 2, this.scale.height / 2, "Frogtato", {
-        fontFamily: "sans-serif",
-        fontSize: "48px",
-        color: "#e8f5e9",
-      })
-      .setOrigin(0.5);
-  }
-}
+const net = new NetClient();
+net.connect();
 
-new Phaser.Game({
+const game = new Phaser.Game({
   type: Phaser.AUTO,
   parent: "app",
-  width: 800,
-  height: 600,
+  width: 960,
+  height: 720,
   backgroundColor: "#101418",
-  scene: [BootScene],
+  scene: [BootScene, LobbyScene, GameScene],
 });
 
-const socket = new WebSocket("ws://localhost:8080");
-socket.addEventListener("open", () => {
-  console.log("open");
-});
+// Shared across all scenes via the registry rather than re-instantiated per
+// scene, so there is exactly one websocket connection for the client's
+// lifetime.
+game.registry.set("net", net);
