@@ -10,3 +10,7 @@ noise generator, envelopes, and a basic one-pole lowpass filter, all
 implemented from scratch and rendered directly to 16-bit PCM WAV.
 
 No attribution is required or owed to any third party for these files.
+
+`sfx-poof.wav` (enemy death sound) and the T12b wiring of `music-loop.wav`
+(background loop, volume toggle) were added in the T12b asset-wiring pass;
+same synthesizer, same "no external assets" guarantee.

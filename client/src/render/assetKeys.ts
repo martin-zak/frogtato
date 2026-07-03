@@ -24,6 +24,11 @@ export const SFX_KEYS = {
   hit: "sfxHit",
   pickup: "sfxPickup",
   down: "sfxDown",
+  poof: "sfxPoof",
+} as const;
+
+export const MUSIC_KEYS = {
+  loop: "musicLoop",
 } as const;
 
 /** Wasp/snail are loaded as single rasterized images with two manually

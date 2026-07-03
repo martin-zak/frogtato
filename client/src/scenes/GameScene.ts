@@ -8,6 +8,7 @@ import { interpolateSnapshot } from "../interp.js";
 import type { NetClient } from "../net.js";
 import { EntityRenderer } from "../render/entities.js";
 import { EffectsController } from "../render/effects.js";
+import { SPRITE_KEYS } from "../render/assetKeys.js";
 import { Hud } from "../ui/hud.js";
 import { AllyIndicators } from "../ui/allyIndicators.js";
 import { routeToPhase } from "../ui/phaseRouter.js";
@@ -22,6 +23,28 @@ interface InputState {
 
 const SAME_STATE = (a: InputState, b: InputState): boolean =>
   a.up === b.up && a.down === b.down && a.left === b.left && a.right === b.right;
+
+/** Depth for the static pond decoration — below every entity sprite
+ * (players/enemies/projectiles/flies all render at the default depth 0),
+ * so lilypads always sit under gameplay regardless of add-order. */
+const LILYPAD_DEPTH = -1;
+
+/** Pure decoration: a hand-picked, deterministic scatter of lily pads
+ * inside the pond ellipse (see drawArena — cx=800,cy=600,rx=800,ry=600, so
+ * every point below is well within (dx/rx)^2+(dy/ry)^2 < 1). Cycles the 3
+ * lilypad art variants and varies rotation/scale a little by hand for a
+ * natural, non-repeating look — no randomness, so the layout is stable
+ * across reloads. */
+const LILYPAD_LAYOUT: ReadonlyArray<{ x: number; y: number; key: string; size: number; rotationDeg: number }> = [
+  { x: 500, y: 400, key: SPRITE_KEYS.lilypad, size: 80, rotationDeg: 15 },
+  { x: 1100, y: 380, key: SPRITE_KEYS.lilypad2, size: 70, rotationDeg: 100 },
+  { x: 650, y: 750, key: SPRITE_KEYS.lilypad3, size: 90, rotationDeg: 200 },
+  { x: 950, y: 800, key: SPRITE_KEYS.lilypad, size: 75, rotationDeg: 260 },
+  { x: 760, y: 560, key: SPRITE_KEYS.lilypad2, size: 60, rotationDeg: 40 },
+  { x: 400, y: 650, key: SPRITE_KEYS.lilypad3, size: 85, rotationDeg: 320 },
+  { x: 1200, y: 650, key: SPRITE_KEYS.lilypad, size: 78, rotationDeg: 160 },
+  { x: 800, y: 900, key: SPRITE_KEYS.lilypad2, size: 68, rotationDeg: 60 },
+];
 
 export class GameScene extends Phaser.Scene {
   private net!: NetClient;
@@ -57,8 +80,9 @@ export class GameScene extends Phaser.Scene {
 
     this.cameras.main.setBackgroundColor("#0a1a12");
 
-    this.arenaGfx = this.add.graphics();
+    this.arenaGfx = this.add.graphics().setDepth(LILYPAD_DEPTH - 1); // below lilypads, which are below entities
     this.drawArena();
+    this.drawLilypads();
 
     this.entityRenderer = new EntityRenderer(this);
     this.effects = new EffectsController(this, this.entityRenderer);
@@ -168,5 +192,18 @@ export class GameScene extends Phaser.Scene {
 
     g.lineStyle(6, 0x2e7d5b, 1);
     g.strokeEllipse(cx, cy, rx * 2, ry * 2);
+  }
+
+  /** Static, non-interactive lily pad scatter — pure decoration, drawn
+   * once and never touched again. See LILYPAD_LAYOUT for the fixed
+   * positions/variants. */
+  private drawLilypads(): void {
+    for (const pad of LILYPAD_LAYOUT) {
+      this.add
+        .sprite(pad.x, pad.y, pad.key)
+        .setDisplaySize(pad.size, pad.size)
+        .setAngle(pad.rotationDeg)
+        .setDepth(LILYPAD_DEPTH);
+    }
   }
 }

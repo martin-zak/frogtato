@@ -142,9 +142,9 @@ export class EffectsController {
     // lifecycle (that sprite is destroyed by EntityRenderer once the enemy
     // disappears from the snapshot, which races with any tween we'd try to
     // run on it directly) — reuses the croak-ring texture as a small
-    // expanding puff. No SFX: there's no dedicated "kill" sound in the
-    // asset manifest and reusing sfxHit would blur its meaning (damage
-    // taken/dealt) with "enemy removed", so this stays silent.
+    // expanding puff, plus the dedicated sfxPoof "death bloop" (added in
+    // T12b — distinct from sfxHit, which stays damage-taken/dealt only).
+    this.playSfx(SFX_KEYS.poof);
     const sprite = this.scene.add.sprite(x, y, SPRITE_KEYS.croakRing);
     sprite.setTint(0xffffff);
     sprite.setScale(0.15);

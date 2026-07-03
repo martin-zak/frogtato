@@ -45,7 +45,8 @@ blues (`#bfe9ff` bubble), warm accents (`#ffcc33` wasp stripes, `#ff6f91` tongue
 | `sfx-hit.wav` | 0.15 s | Damage taken/dealt — short filtered-noise thump with a low sine body. |
 | `sfx-pickup.wav` | 0.15 s | Fly pickup — rising square-wave chirp (classic "coin" sweep). |
 | `sfx-down.wav` | 0.45 s | Player downed — descending triangle/sine tone, sad/falling. |
-| `music-loop.wav` | 16.0 s | Background music. Mellow ambient pond loop: heavily-lowpassed noise "water" wash + a sparse pentatonic (A minor pentatonic, low register) plucked-triangle melody on a 16-beat/16-bar grid + an occasional low froggy "croak" synth accent every 8 beats. First/last 60 ms fade to silence so the loop seam is silent-to-silent (click-free). Quiet/mellow per spec, not a "hype" loop. |
+| `sfx-poof.wav` | 0.22 s | Enemy death — soft descending sine/triangle "bloop" with a light noise puff on the onset; distinct from `sfx-hit` (which stays a percussive thump for damage taken/dealt). Added in T12b. |
+| `music-loop.wav` | 16.0 s | Background music. Mellow ambient pond loop: heavily-lowpassed noise "water" wash + a sparse pentatonic (A minor pentatonic, low register) plucked-triangle melody on a 16-beat/16-bar grid + an occasional low froggy "croak" synth accent every 8 beats. First/last 60 ms fade to silence so the loop seam is silent-to-silent (click-free). Quiet/mellow per spec, not a "hype" loop. Loaded + played on loop at low volume (~0.25) by T12b once audio is unlocked. |
 | `CREDITS.md` | — | States all audio was generated for this project; no external downloads. |
 | `synth.mjs` | — | The Node.js script that generated every `.wav` above (dependency-free raw PCM/WAV writer + oscillators/envelope/filter). Kept for reproducibility; not a game asset. |
 

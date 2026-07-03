@@ -16,7 +16,14 @@
 //    `Texture.add(frameIndex, 0, x, y, w, h)`. This gives sprites a normal
 //    `setFrame(0|1)` API without ever going through the spritesheet loader.
 import Phaser from "phaser";
-import { SPRITE_KEYS, SFX_KEYS, WASP_FRAME, SNAIL_FRAME } from "../render/assetKeys.js";
+import { SPRITE_KEYS, SFX_KEYS, MUSIC_KEYS, WASP_FRAME, SNAIL_FRAME } from "../render/assetKeys.js";
+
+/** localStorage key for the persisted mute toggle (T12b). Read here (to
+ * seed the SoundManager's initial `mute` before music starts) and in
+ * ui/hud.ts (to toggle + persist it) — small, deliberate duplication of a
+ * one-line string rather than a new shared module for a single constant. */
+const MUTE_STORAGE_KEY = "frogtato.audioMuted";
+const MUSIC_VOLUME = 0.25;
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -42,7 +49,8 @@ export class BootScene extends Phaser.Scene {
     this.load.audio(SFX_KEYS.hit, "audio/sfx-hit.wav");
     this.load.audio(SFX_KEYS.pickup, "audio/sfx-pickup.wav");
     this.load.audio(SFX_KEYS.down, "audio/sfx-down.wav");
-    // music-loop.wav intentionally NOT loaded here — owned by a later task (T12b).
+    this.load.audio(SFX_KEYS.poof, "audio/sfx-poof.wav");
+    this.load.audio(MUSIC_KEYS.loop, "audio/music-loop.wav");
   }
 
   create(): void {
@@ -52,7 +60,35 @@ export class BootScene extends Phaser.Scene {
     this.registerTwoFrameSheet(SPRITE_KEYS.wasp, WASP_FRAME.width, WASP_FRAME.height);
     this.registerTwoFrameSheet(SPRITE_KEYS.snail, SNAIL_FRAME.width, SNAIL_FRAME.height);
 
+    this.setupMusic();
+
     this.scene.start("Lobby");
+  }
+
+  /** Starts the looped background music once, at game level (via the
+   * shared `this.sound` SoundManager, which is one instance for the whole
+   * game — not per-scene — so this survives every later scene transition
+   * without re-wiring). Respects the WebAudio autoplay/unlock policy: if
+   * the AudioContext isn't unlocked yet (no user gesture received), wait
+   * for Phaser's `UNLOCKED` event (fired on the first pointer interaction)
+   * before starting, same guard shape as effects.ts's `sound.locked` check
+   * for one-shot SFX. Guarded via the registry against double-start (e.g.
+   * if this scene were ever re-run).
+   */
+  private setupMusic(): void {
+    this.sound.mute = localStorage.getItem(MUTE_STORAGE_KEY) === "1";
+
+    const start = (): void => {
+      if (this.registry.get("musicStarted")) return;
+      this.registry.set("musicStarted", true);
+      this.sound.add(MUSIC_KEYS.loop, { loop: true, volume: MUSIC_VOLUME }).play();
+    };
+
+    if (!this.sound.locked) {
+      start();
+    } else {
+      this.sound.once(Phaser.Sound.Events.UNLOCKED, start);
+    }
   }
 
   private registerTwoFrameSheet(key: string, frameWidth: number, frameHeight: number): void {

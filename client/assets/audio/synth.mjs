@@ -96,7 +96,7 @@ function normalize(arr, peak = 0.9) {
   return out;
 }
 
-const OUT = "/home/martin/frogtato/assets-staging/audio";
+const OUT = "/home/martin/frogtato/client/assets/audio";
 
 // ---------------------------------------------------------------
 // 1. sfx-tongue: quick wet "snap" — short filtered-noise crack + fast
@@ -191,7 +191,31 @@ const OUT = "/home/martin/frogtato/assets-staging/audio";
 }
 
 // ---------------------------------------------------------------
-// 7. music-loop: mellow ambient pond loop, ~24s, loops cleanly.
+// 7. sfx-poof: enemy death "poof" — soft descending bloop, distinct from
+//    sfx-hit (which is a percussive noise thump for damage taken/dealt).
+//    This is a clean sine/triangle blend gliding down in pitch with a
+//    quick soft attack and gentle release, plus a very light noise puff
+//    at the very start for a bit of "pop" texture — reads as a light,
+//    airy "enemy vanished" cue rather than an impact.
+{
+  const dur = 0.22;
+  const n = Math.round(dur * SR);
+  const noiseArr = new Float64Array(n);
+  for (let i = 0; i < n; i++) noiseArr[i] = noise();
+  const filtered = lowpassArray(noiseArr, 0.6);
+  const raw = gen(dur, (t, i) => {
+    const env = envelope(i, 0.004, 0.08, 0.25, 0.12, n);
+    const puffEnv = Math.max(0, 1 - t / 0.03); // short noise puff only at onset
+    const freq = 520 - (t / dur) * 380; // descending "bloop"
+    const tone = sine(t, freq) * 0.6 + triangle(t, freq * 0.5) * 0.25;
+    const puff = filtered[i] * 0.2 * puffEnv;
+    return tone * env + puff;
+  });
+  writeWav(`${OUT}/sfx-poof.wav`, normalize(raw));
+}
+
+// ---------------------------------------------------------------
+// 8. music-loop: mellow ambient pond loop, ~24s, loops cleanly.
 //    Layer: soft lowpass-filtered noise "water" pad (constant, loop-safe
 //    because noise has no phase to mismatch) + a gentle triangle-wave
 //    pentatonic melody plucked on a loop-length-aligned grid + occasional

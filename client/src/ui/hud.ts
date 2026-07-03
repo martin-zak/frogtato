@@ -34,6 +34,12 @@ const SLOT_BOX_MARGIN = 24;
 
 const DEPTH = 1000;
 
+/** localStorage key for the persisted mute toggle (T12b). Duplicated
+ * (one-line string) from scenes/BootScene.ts, which seeds the
+ * SoundManager's initial `mute` from the same key before this button
+ * exists — see the comment there. */
+const MUTE_STORAGE_KEY = "frogtato.audioMuted";
+
 interface SlotUi {
   box: Phaser.GameObjects.Rectangle;
   sweep: Phaser.GameObjects.Graphics;
@@ -54,6 +60,8 @@ export class Hud {
   private flyText: Phaser.GameObjects.Text;
 
   private slots: SlotUi[];
+
+  private volumeButton: Phaser.GameObjects.Text;
 
   /** Last local receipt time (`Date.now()`) of an `attack` event for the
    * local player, per weapon slot — drives the cooldown sweep (the client
@@ -146,6 +154,21 @@ export class Hud {
       this.slots.push({ box, sweep, label });
     }
 
+    this.volumeButton = scene.add
+      .text(width - 16, 16, "", {
+        fontFamily: "sans-serif",
+        fontSize: "22px",
+        color: "#e8f5e9",
+        backgroundColor: "#14201c",
+        padding: { x: 8, y: 4 },
+      })
+      .setOrigin(1, 0)
+      .setScrollFactor(0)
+      .setDepth(DEPTH)
+      .setInteractive({ useHandCursor: true })
+      .on("pointerup", () => this.toggleMute());
+    this.refreshVolumeButton();
+
     this.unsubscribeEvents = net.onEvent((event) => {
       if (event.type === "attack" && event.playerId === net.playerId && event.slot < this.lastAttackAtMs.length) {
         this.lastAttackAtMs[event.slot] = Date.now();
@@ -226,6 +249,19 @@ export class Hud {
     ui.sweep.fillPath();
   }
 
+  /** Toggles `this.sound.mute` (a global SoundManager flag — one instance
+   * shared by the whole game, so this also silences/restores the T12b
+   * background music started in BootScene) and persists the choice. */
+  private toggleMute(): void {
+    this.scene.sound.mute = !this.scene.sound.mute;
+    localStorage.setItem(MUTE_STORAGE_KEY, this.scene.sound.mute ? "1" : "0");
+    this.refreshVolumeButton();
+  }
+
+  private refreshVolumeButton(): void {
+    this.volumeButton.setText(this.scene.sound.mute ? "\u{1F507}" : "\u{1F50A}"); // 🔇 / 🔊
+  }
+
   destroy(): void {
     this.unsubscribeEvents();
     this.waveText.destroy();
@@ -234,6 +270,7 @@ export class Hud {
     this.hpBarFill.destroy();
     this.hpText.destroy();
     this.flyText.destroy();
+    this.volumeButton.destroy();
     for (const ui of this.slots) {
       ui.box.destroy();
       ui.sweep.destroy();
