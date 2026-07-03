@@ -17,7 +17,7 @@
 import Phaser from "phaser";
 import type { GameEvent, PlayerSnap } from "@frogtato/shared";
 import type { NetClient } from "../net.js";
-import { computeShopOffers, type ShopOfferView } from "../ui/shop/catalog.js";
+import { computeShopOffers, mergeEligible, MERGE_OFFER_ID, type ShopOfferView } from "../ui/shop/catalog.js";
 
 const COLOR_BG = 0x0a1a2a;
 const COLOR_AFFORDABLE = 0x2e7d5b;
@@ -27,15 +27,22 @@ const COLOR_FLASH = 0x66bb6a;
 const COLOR_READY_IDLE = 0x4caf50;
 const COLOR_READY_SENT = 0x37474f;
 const COLOR_TOAST = 0xb71c1c;
+// Phase 2 §3: gold accent for the Merge button (CSS strings — this button
+// uses Text backgroundColor, not a Rectangle fillColor like the offer
+// grid), distinct from every other shop control's green/blue palette so it
+// reads as a special action.
+const COLOR_MERGE_CSS = "#c9a227";
+const COLOR_MERGE_FLASH_CSS = "#ffe082";
 
 const OFFER_BOX_WIDTH = 300;
-const OFFER_BOX_HEIGHT = 54;
-const OFFER_BOX_GAP = 10;
-const OFFER_START_Y = 120;
+const OFFER_BOX_HEIGHT = 44;
+const OFFER_BOX_GAP = 6;
+const OFFER_START_Y = 110;
 const OFFER_X = 190;
 
 const TOAST_MS = 2200;
 const FLASH_MS = 220;
+const MERGE_FLASH_MS = 400;
 
 interface OfferButton {
   box: Phaser.GameObjects.Rectangle;
@@ -61,6 +68,8 @@ export class ShopScene extends Phaser.Scene {
   private countdownText!: Phaser.GameObjects.Text;
   private fliesText!: Phaser.GameObjects.Text;
   private statsText!: Phaser.GameObjects.Text;
+  private mergeButton!: Phaser.GameObjects.Text;
+  private mergeSent = false;
   private readyListText!: Phaser.GameObjects.Text;
   private readyButton!: Phaser.GameObjects.Text;
   private toastText!: Phaser.GameObjects.Text;
@@ -78,6 +87,7 @@ export class ShopScene extends Phaser.Scene {
     this.purchaseCounts = {};
     this.priceOverrides = {};
     this.readySent = false;
+    this.mergeSent = false;
     this.lastSeenPhaseEndsAt = null;
     this.lastSeenPhase = null;
     this.phaseEndsAt = null;
@@ -111,6 +121,10 @@ export class ShopScene extends Phaser.Scene {
 
     this.buildOfferButtons();
 
+    // Right column layout (absolute y's, independent of the offer grid's
+    // row count on the left): Stats (now 6 lines: HP/Damage/Move
+    // speed/Armor/Regen/Pickup radius + 2 weapon slot lines), an optional
+    // Merge button, then Ready.
     const rightColX = OFFER_X + OFFER_BOX_WIDTH + 60;
     this.add.text(rightColX, OFFER_START_Y, "Your Stats", {
       fontFamily: "sans-serif",
@@ -119,17 +133,29 @@ export class ShopScene extends Phaser.Scene {
     });
     this.statsText = this.add.text(rightColX, OFFER_START_Y + 28, "", {
       fontFamily: "sans-serif",
-      fontSize: "16px",
+      fontSize: "15px",
       color: "#cfd8dc",
       lineSpacing: 6,
     });
 
-    this.add.text(rightColX, OFFER_START_Y + 200, "Ready", {
+    this.mergeButton = this.add
+      .text(rightColX, OFFER_START_Y + 260, "  MERGE  ", {
+        fontFamily: "sans-serif",
+        fontSize: "20px",
+        fontStyle: "bold",
+        color: "#101418",
+        backgroundColor: COLOR_MERGE_CSS,
+      })
+      .setPadding(14, 8, 14, 8)
+      .setVisible(false);
+    this.mergeButton.on("pointerdown", () => this.sendMerge());
+
+    this.add.text(rightColX, OFFER_START_Y + 320, "Ready", {
       fontFamily: "sans-serif",
       fontSize: "18px",
       color: "#e8f5e9",
     });
-    this.readyListText = this.add.text(rightColX, OFFER_START_Y + 228, "", {
+    this.readyListText = this.add.text(rightColX, OFFER_START_Y + 348, "", {
       fontFamily: "sans-serif",
       fontSize: "16px",
       color: "#cfd8dc",
@@ -137,7 +163,7 @@ export class ShopScene extends Phaser.Scene {
     });
 
     this.readyButton = this.add
-      .text(rightColX, OFFER_START_Y + 380, "  READY  ", {
+      .text(rightColX, OFFER_START_Y + 470, "  READY  ", {
         fontFamily: "sans-serif",
         fontSize: "26px",
         color: "#101418",
@@ -201,6 +227,7 @@ export class ShopScene extends Phaser.Scene {
       this.purchaseCounts = {};
       this.priceOverrides = {};
       this.readySent = false;
+      this.mergeSent = false;
       this.setReadyButtonState(false);
     }
 
@@ -214,10 +241,22 @@ export class ShopScene extends Phaser.Scene {
           `HP: ${Math.round(own.hp)} / ${own.maxHp}`,
           `Damage: +${Math.round(own.stats.damagePct * 100)}%`,
           `Move speed: ${Math.round(own.stats.moveSpeed)} px/s`,
+          `Armor: ${own.stats.armor}`,
+          `Regen: ${own.stats.regen} hp/5s`,
+          `Pickup radius: ${Math.round(own.stats.pickupRadius)} px`,
           `Slot 1: ${weaponSlotLabel(own.weapons[0] ?? null)}`,
           `Slot 2: ${weaponSlotLabel(own.weapons[1] ?? null)}`,
         ].join("\n"),
       );
+
+      // Phase 2 §3: the Merge button shows only while both slots hold the
+      // same weapon kind + level at a mergeable level, and hides itself the
+      // moment a merge request is in flight (so it can't be double-fired
+      // before the next snapshot reflects the merged result).
+      const canMerge = !this.mergeSent && mergeEligible(own.weapons);
+      this.mergeButton.setVisible(canMerge);
+      if (canMerge) this.mergeButton.setInteractive({ useHandCursor: true });
+      else this.mergeButton.disableInteractive();
 
       const offers = computeShopOffers({
         own,
@@ -235,6 +274,13 @@ export class ShopScene extends Phaser.Scene {
   }
 
   private handleEvent(event: GameEvent): void {
+    if (event.type === "merged") {
+      if (event.playerId !== this.net.playerId) return; // only own merges affect this client's shop UI
+      this.mergeSent = false; // slots changed; a future duplicate pair can merge again
+      this.flashMergeButton();
+      return;
+    }
+
     if (event.type !== "purchaseResult") return;
     if (event.playerId !== this.net.playerId) return; // only own purchases affect this client's shop UI
 
@@ -245,6 +291,12 @@ export class ShopScene extends Phaser.Scene {
       }
       this.flashOffer(event.offerId);
     } else {
+      // A failed `merge` (offerId "merge", per ids.ts MERGE_OFFER_ID) uses
+      // the same purchaseResult path as any other purchase (DESIGN-PHASE2.md
+      // §3) — server reasons: "wrong phase" / "nothing to merge" /
+      // "levels differ" / "max level". Re-arm the button so the player can
+      // retry once eligible again.
+      if (event.offerId === MERGE_OFFER_ID) this.mergeSent = false;
       this.showToast(event.reason ?? "Purchase failed");
     }
   }
@@ -266,46 +318,47 @@ export class ShopScene extends Phaser.Scene {
         .setOrigin(0, 0)
         .setStrokeStyle(1, 0x455a64);
 
-      const title = this.add.text(OFFER_X + 10, y + 8, "", {
+      const title = this.add.text(OFFER_X + 10, y + 6, "", {
         fontFamily: "sans-serif",
-        fontSize: "16px",
+        fontSize: "14px",
         color: "#e8f5e9",
       });
-      const price = this.add.text(OFFER_X + OFFER_BOX_WIDTH - 10, y + 8, "", {
+      const price = this.add.text(OFFER_X + OFFER_BOX_WIDTH - 10, y + 6, "", {
         fontFamily: "sans-serif",
-        fontSize: "16px",
+        fontSize: "14px",
         color: "#ffe082",
       }).setOrigin(1, 0);
-      const reason = this.add.text(OFFER_X + 10, y + 30, "", {
+      const reason = this.add.text(OFFER_X + 10, y + 24, "", {
         fontFamily: "sans-serif",
-        fontSize: "12px",
+        fontSize: "11px",
         color: "#ff8a80",
       });
 
       const slotBoxWidth = 60;
+      const slotBoxHeight = 16;
       const slotBoxes: [Phaser.GameObjects.Rectangle, Phaser.GameObjects.Rectangle] = [
         this.add
-          .rectangle(OFFER_X + OFFER_BOX_WIDTH - slotBoxWidth * 2 - 8, y + OFFER_BOX_HEIGHT - 20, slotBoxWidth, 18, COLOR_AFFORDABLE)
+          .rectangle(OFFER_X + OFFER_BOX_WIDTH - slotBoxWidth * 2 - 8, y + OFFER_BOX_HEIGHT - slotBoxHeight - 4, slotBoxWidth, slotBoxHeight, COLOR_AFFORDABLE)
           .setOrigin(0, 0)
           .setVisible(false),
         this.add
-          .rectangle(OFFER_X + OFFER_BOX_WIDTH - slotBoxWidth - 4, y + OFFER_BOX_HEIGHT - 20, slotBoxWidth, 18, COLOR_AFFORDABLE)
+          .rectangle(OFFER_X + OFFER_BOX_WIDTH - slotBoxWidth - 4, y + OFFER_BOX_HEIGHT - slotBoxHeight - 4, slotBoxWidth, slotBoxHeight, COLOR_AFFORDABLE)
           .setOrigin(0, 0)
           .setVisible(false),
       ];
       const slotTexts: [Phaser.GameObjects.Text, Phaser.GameObjects.Text] = [
         this.add
-          .text(slotBoxes[0].x + slotBoxWidth / 2, slotBoxes[0].y + 9, "", {
+          .text(slotBoxes[0].x + slotBoxWidth / 2, slotBoxes[0].y + slotBoxHeight / 2, "", {
             fontFamily: "sans-serif",
-            fontSize: "11px",
+            fontSize: "10px",
             color: "#101418",
           })
           .setOrigin(0.5)
           .setVisible(false),
         this.add
-          .text(slotBoxes[1].x + slotBoxWidth / 2, slotBoxes[1].y + 9, "", {
+          .text(slotBoxes[1].x + slotBoxWidth / 2, slotBoxes[1].y + slotBoxHeight / 2, "", {
             fontFamily: "sans-serif",
-            fontSize: "11px",
+            fontSize: "10px",
             color: "#101418",
           })
           .setOrigin(0.5)
@@ -431,6 +484,36 @@ export class ShopScene extends Phaser.Scene {
   }
 
   // ---------------------------------------------------------------------
+  // Merge (Phase 2 §3)
+  // ---------------------------------------------------------------------
+
+  private sendMerge(): void {
+    if (this.mergeSent) return;
+    this.mergeSent = true;
+    this.mergeButton.disableInteractive();
+    this.net.send({ type: "merge" });
+  }
+
+  /** Celebratory flash on a successful `merged` event: a quick bright-gold
+   * pulse + tiny pop, distinct from the plain green `flashOffer` used for
+   * regular purchases. The updated weapon slots themselves are already
+   * covered by the normal per-snapshot statsText re-render in
+   * handleSnapshot — this is purely the "that felt good" flourish. */
+  private flashMergeButton(): void {
+    this.mergeButton.setBackgroundColor(COLOR_MERGE_FLASH_CSS);
+    this.tweens.add({
+      targets: this.mergeButton,
+      scale: 1.15,
+      duration: MERGE_FLASH_MS / 2,
+      yoyo: true,
+      ease: "Cubic.Out",
+      onComplete: () => {
+        if (this.mergeButton.active) this.mergeButton.setBackgroundColor(COLOR_MERGE_CSS);
+      },
+    });
+  }
+
+  // ---------------------------------------------------------------------
   // Ready
   // ---------------------------------------------------------------------
 
@@ -475,7 +558,7 @@ export class ShopScene extends Phaser.Scene {
   }
 }
 
-const MAX_OFFERS = 7; // 3 weapon-buy + 1 upgrade + 3 stat offers, per SHOP_CATALOG + the synthetic upgrade offer
+const MAX_OFFERS = 10; // 3 weapon-buy + 1 upgrade + 6 stat offers (Phase 2 §2 adds armor/regen/pickupRadius), per SHOP_CATALOG + the synthetic upgrade offer
 
 function weaponSlotLabel(slot: { kind: string; level: number } | null): string {
   if (!slot) return "empty";

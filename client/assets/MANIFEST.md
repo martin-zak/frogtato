@@ -1,7 +1,9 @@
 # Frogtato asset staging — manifest
 
-Produced by the T12 art & audio agent. Everything below is original work
-generated for this project (see `audio/CREDITS.md`); nothing was downloaded.
+Produced by the T12 art & audio agent, extended by the Phase 2 P5 (client
+merge UI / new stats / heron & boss rendering) pass. Everything below is
+original work generated for this project (see `audio/CREDITS.md`); nothing
+was downloaded.
 
 **Rasterization note:** no PNG rasterizer was available on this machine
 (checked `rsvg-convert`, `inkscape`, `convert`/`magick`, and Python
@@ -29,11 +31,17 @@ rasterize cleanly with any standard SVG renderer at any target size.
 | `lilypad.svg` | 96×96 | Lily pad decoration, variant 1 (round pad, wedge notch, mid green). | 1 |
 | `lilypad2.svg` | 96×96 | Lily pad decoration, variant 2 (rotated 110°, slightly smaller, lighter green) — cheap palette/transform variant of variant 1. | 1 |
 | `lilypad3.svg` | 96×96 | Lily pad decoration, variant 3 (rotated 230°, darker teal-green, tiny pink flower accent). | 1 |
+| `heron.svg` | 96×48 viewBox (2 × 48×48) | Heron enemy (Phase 2 §4, waves 3+). Sprite sheet: frame 0 = neck curled back / wings up (circling glide), frame 1 = neck extended forward / wings down (flap). Alternate frames for the flight wobble, same cadence as wasp/snail. | 2 |
+| `crown.svg` | 32×20 | Snail King boss accent (Phase 2 §4/P5). A small gold crown, drawn as a separate overlay sprite positioned above the ×3-scaled `snail.svg` body in `render/entities.ts` (not baked into a new snail texture) — the boss reuses the existing snail art plus this accent, a darker tint, and a slight scale squash during its shell phase (`EnemySnap.shelled`). | 1 |
 
 **Palette:** pond greens (`#4c9a5b`/`#57a866`/`#3f8f5a` pads, `#8fd694` snail foot),
 blues (`#bfe9ff` bubble), warm accents (`#ffcc33` wasp stripes, `#ff6f91` tongue,
 `#c97a3d` snail shell). Flat fills, consistent ~1.5–2.5px black outlines throughout
 (matching DESIGN §10's "flat-color, bold outlines" style), transparent backgrounds.
+Phase 2 additions extend the same palette: heron in cool greys (`#e7edee` body,
+`#c9d6da` wings, `#f4a731` beak/legs) to read as a distinct new silhouette against
+the warm wasp/snail colors; crown accent in gold (`#ffd54a`) with small red/blue
+gem dots, echoing the "flat + bold outline" convention.
 
 ## audio/
 
@@ -45,7 +53,8 @@ blues (`#bfe9ff` bubble), warm accents (`#ffcc33` wasp stripes, `#ff6f91` tongue
 | `sfx-hit.wav` | 0.15 s | Damage taken/dealt — short filtered-noise thump with a low sine body. |
 | `sfx-pickup.wav` | 0.15 s | Fly pickup — rising square-wave chirp (classic "coin" sweep). |
 | `sfx-down.wav` | 0.45 s | Player downed — descending triangle/sine tone, sad/falling. |
-| `sfx-poof.wav` | 0.22 s | Enemy death — soft descending sine/triangle "bloop" with a light noise puff on the onset; distinct from `sfx-hit` (which stays a percussive thump for damage taken/dealt). Added in T12b. |
+| `sfx-poof.wav` | 0.22 s | Enemy death — soft descending sine/triangle "bloop" with a light noise puff on the onset; distinct from `sfx-hit` (which stays a percussive thump for damage taken/dealt). Added in T12b. Reused at a lower playback rate (`rate: 0.55`) for the Snail King's bigger death poof (Phase 2 §4/P5) — no separate boss-death file. |
+| `sfx-telegraph.wav` | 0.3 s | Heron dive-swoop warning (Phase 2 §4, P5) — plays once per telegraph appearance, keyed per-enemy-id in `render/entities.ts`. A clean sine sweep that clearly **rises** in pitch (300→1000 Hz) with a building tremolo near the end, and has no noise layer — deliberately distinct in contour from every other cue (tongue/hit/poof/down all fall or crack; bubble/pickup rise but as noise-crack or bright square-wave chirps respectively). |
 | `music-loop.wav` | 16.0 s | Background music. Mellow ambient pond loop: heavily-lowpassed noise "water" wash + a sparse pentatonic (A minor pentatonic, low register) plucked-triangle melody on a 16-beat/16-bar grid + an occasional low froggy "croak" synth accent every 8 beats. First/last 60 ms fade to silence so the loop seam is silent-to-silent (click-free). Quiet/mellow per spec, not a "hype" loop. Loaded + played on loop at low volume (~0.25) by T12b once audio is unlocked. |
 | `CREDITS.md` | — | States all audio was generated for this project; no external downloads. |
 | `synth.mjs` | — | The Node.js script that generated every `.wav` above (dependency-free raw PCM/WAV writer + oscillators/envelope/filter). Kept for reproducibility; not a game asset. |

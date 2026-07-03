@@ -14,3 +14,10 @@ No attribution is required or owed to any third party for these files.
 `sfx-poof.wav` (enemy death sound) and the T12b wiring of `music-loop.wav`
 (background loop, volume toggle) were added in the T12b asset-wiring pass;
 same synthesizer, same "no external assets" guarantee.
+
+`sfx-telegraph.wav` (heron dive-swoop warning) was added in the Phase 2 P5
+pass (client merge UI / new stats / heron & boss rendering); same
+synthesizer (`synth.mjs`, extended with one new generator block), same
+"no external assets" guarantee. All existing `.wav` files were regenerated
+in the same run for reproducibility (deterministic synthesis, same
+generation method as before).

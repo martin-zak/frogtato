@@ -33,13 +33,14 @@ import {
   WEAPON_SHOP_OFFERS,
   STAT_SHOP_OFFERS,
   WEAPON_UPGRADE_PRICES,
+  MERGEABLE_LEVELS,
   type WeaponType,
   type WeaponLevel as BalanceWeaponLevel,
 } from "@frogtato/shared";
-import type { PlayerSnap, WeaponLevel } from "@frogtato/shared";
-import { UPGRADE_OFFER_ID } from "@frogtato/shared";
+import type { PlayerSnap, WeaponLevel, WeaponKind } from "@frogtato/shared";
+import { UPGRADE_OFFER_ID, MERGE_OFFER_ID } from "@frogtato/shared";
 
-export { UPGRADE_OFFER_ID };
+export { UPGRADE_OFFER_ID, MERGE_OFFER_ID };
 
 const WEAPON_DISPLAY_NAMES: Readonly<Record<WeaponType, string>> = {
   tongueLash: "Tongue Lash",
@@ -51,6 +52,10 @@ const STAT_TITLES: Record<string, string> = {
   buyMaxHp: "+3 Max HP",
   buyDamage: "+8% Damage",
   buyMoveSpeed: "+10% Move Speed",
+  // Phase 2 §2 — completing the stat sheet.
+  buyArmor: "+1 Armor",
+  buyRegen: "+1 Regen",
+  buyPickupRadius: "+15 Pickup Radius",
 };
 
 /** A single slot-specific price/affordability choice, shown as its own button
@@ -201,3 +206,26 @@ function computeStatOffer(
 // import from @frogtato/shared just for the catalog list itself.
 export { SHOP_CATALOG };
 export type ShopWeaponLevel = BalanceWeaponLevel;
+
+// ---------------------------------------------------------------------------
+// Phase 2 §3 — Weapon Merging
+// ---------------------------------------------------------------------------
+
+/** A player's two weapon slots, in slot order — the same shape as
+ * `PlayerSnap.weapons`. */
+export type WeaponSlots = readonly ({ kind: WeaponKind; level: WeaponLevel } | null)[];
+
+/**
+ * Pure mirror of the server's merge eligibility check (DESIGN-PHASE2.md
+ * §3): true exactly when both slots hold the same weapon kind at the same
+ * level, and that level is mergeable (I or II — MERGEABLE_LEVELS; III has
+ * no next level). Used to decide whether ShopScene shows the Merge button;
+ * the server re-validates independently when the `merge` message arrives.
+ */
+export function mergeEligible(weapons: WeaponSlots): boolean {
+  const [a, b] = weapons;
+  if (!a || !b) return false;
+  if (a.kind !== b.kind) return false;
+  if (a.level !== b.level) return false;
+  return (MERGEABLE_LEVELS as readonly number[]).includes(a.level);
+}

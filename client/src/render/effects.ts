@@ -16,6 +16,11 @@ const HIT_FLASH_MS = 100;
 const POOF_TWEEN_MS = 250;
 const DEFAULT_WEAPON_LEVEL: WeaponLevel = 1;
 
+// Phase 2 §4/P5: Snail King boss lifecycle visuals.
+const BOSS_BANNER_MS = 2000;
+const BOSS_FLASH_MS = 260;
+const BOSS_POOF_TWEEN_MS = 500; // bigger + slower than a regular enemy poof
+
 // Screen shake on taking (own) damage — small and quick, deliberately subtle
 // (PLAN T11 "feel"): ~80ms, ~4px of amplitude. Phaser's shake intensity is a
 // fraction of the camera's *view* size, not an absolute pixel amount, so the
@@ -68,9 +73,17 @@ export class EffectsController {
       case "playerDowned":
         this.playSfx(SFX_KEYS.down);
         break;
+      case "bossSpawned":
+        this.handleBossSpawned();
+        break;
+      case "bossDied":
+        this.handleBossDied();
+        break;
       default:
         // waveStart/waveEnd/purchaseResult/gameOver/victory/playerJoined/
-        // playerLeft have no combat-visual/SFX handling in this task.
+        // playerLeft/classPicked/merged have no combat-visual/SFX handling
+        // in this task (merged's celebratory flash lives in ShopScene,
+        // since it's shop-phase-only UI, not a GameScene combat effect).
         break;
     }
   }
@@ -179,12 +192,64 @@ export class EffectsController {
     });
   }
 
-  private playSfx(key: string): void {
+  /** Screen flash + a big fading "SNAIL KING" banner (Phase 2 §4): the
+   * finale boss's entrance, using only visuals already in the effect
+   * toolkit (camera.flash, a tween-faded text object) — no new assets. */
+  private handleBossSpawned(): void {
+    const camera = this.scene.cameras.main;
+    camera.flash(BOSS_FLASH_MS, 200, 40, 40);
+
+    const banner = this.scene.add
+      .text(camera.width / 2, camera.height / 2, "SNAIL KING", {
+        fontFamily: "sans-serif",
+        fontSize: "56px",
+        fontStyle: "bold",
+        color: "#ffd54a",
+        stroke: "#000000",
+        strokeThickness: 6,
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(1000);
+
+    this.scene.tweens.add({
+      targets: banner,
+      alpha: 0,
+      duration: BOSS_BANNER_MS,
+      delay: 400,
+      onComplete: () => banner.destroy(),
+    });
+  }
+
+  /** Bigger, slower poof than a regular enemy death (Phase 2 §4), reusing
+   * the croak-ring texture and sfxPoof at a lower pitch/rate so it reads as
+   * heavier — no new assets needed for the finale kill. */
+  private handleBossDied(): void {
+    const camera = this.scene.cameras.main;
+    this.playSfx(SFX_KEYS.poof, { rate: 0.55 });
+
+    const sprite = this.scene.add
+      .sprite(camera.worldView.centerX, camera.worldView.centerY, SPRITE_KEYS.croakRing)
+      .setTint(0xffd54a)
+      .setScale(0.3)
+      .setAlpha(0.9);
+
+    this.scene.tweens.add({
+      targets: sprite,
+      scale: 2.2,
+      alpha: 0,
+      duration: BOSS_POOF_TWEEN_MS,
+      ease: "Cubic.Out",
+      onComplete: () => sprite.destroy(),
+    });
+  }
+
+  private playSfx(key: string, config?: { rate?: number }): void {
     // Guard against the WebAudio autoplay/unlock policy: before the first
     // user gesture, Phaser's sound manager reports `locked === true` and
     // play() calls are unreliable/queued oddly. Simplest robust behavior:
     // just drop the sound in that case rather than building a queue.
     if (this.scene.sound.locked) return;
-    this.scene.sound.play(key);
+    this.scene.sound.play(key, config);
   }
 }

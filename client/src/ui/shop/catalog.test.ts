@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeShopOffers, UPGRADE_OFFER_ID } from "./catalog.js";
+import { computeShopOffers, mergeEligible, UPGRADE_OFFER_ID } from "./catalog.js";
 import type { PlayerSnap } from "@frogtato/shared";
 
 function makeOwn(overrides: Partial<PlayerSnap> = {}): PlayerSnap {
@@ -170,5 +170,65 @@ describe("computeShopOffers — weapon-upgrade pricing", () => {
     const v = findOffer(computeShopOffers({ own }), UPGRADE_OFFER_ID);
     expect(v.disabled).toBe(true);
     expect(v.reason).toBe("no upgradeable slot");
+  });
+});
+
+describe("computeShopOffers — Phase 2 §2 new stat offers (armor/regen/pickupRadius)", () => {
+  it("prices buyArmor at 14 base, +8 per purchase, capped at 3", () => {
+    const own = makeOwn({ flies: 999 });
+    expect(findOffer(computeShopOffers({ own, purchaseCounts: { buyArmor: 0 } }), "buyArmor").price).toBe(14);
+    expect(findOffer(computeShopOffers({ own, purchaseCounts: { buyArmor: 1 } }), "buyArmor").price).toBe(22);
+    expect(findOffer(computeShopOffers({ own, purchaseCounts: { buyArmor: 2 } }), "buyArmor").price).toBe(30);
+
+    const underCap = findOffer(computeShopOffers({ own, purchaseCounts: { buyArmor: 2 } }), "buyArmor");
+    expect(underCap.disabled).toBe(false);
+    const atCap = findOffer(computeShopOffers({ own, purchaseCounts: { buyArmor: 3 } }), "buyArmor");
+    expect(atCap.disabled).toBe(true);
+    expect(atCap.reason).toBe("max purchases reached");
+  });
+
+  it("prices buyRegen at 12 base, +6 per purchase, capped at 3", () => {
+    const own = makeOwn({ flies: 999 });
+    expect(findOffer(computeShopOffers({ own, purchaseCounts: { buyRegen: 0 } }), "buyRegen").price).toBe(12);
+    expect(findOffer(computeShopOffers({ own, purchaseCounts: { buyRegen: 1 } }), "buyRegen").price).toBe(18);
+    expect(findOffer(computeShopOffers({ own, purchaseCounts: { buyRegen: 2 } }), "buyRegen").price).toBe(24);
+
+    const atCap = findOffer(computeShopOffers({ own, purchaseCounts: { buyRegen: 3 } }), "buyRegen");
+    expect(atCap.disabled).toBe(true);
+  });
+
+  it("prices buyPickupRadius at 8 base, +4 per purchase, capped at 4", () => {
+    const own = makeOwn({ flies: 999 });
+    expect(findOffer(computeShopOffers({ own, purchaseCounts: { buyPickupRadius: 0 } }), "buyPickupRadius").price).toBe(8);
+    expect(findOffer(computeShopOffers({ own, purchaseCounts: { buyPickupRadius: 3 } }), "buyPickupRadius").price).toBe(20);
+
+    const underCap = findOffer(computeShopOffers({ own, purchaseCounts: { buyPickupRadius: 3 } }), "buyPickupRadius");
+    expect(underCap.disabled).toBe(false);
+    const atCap = findOffer(computeShopOffers({ own, purchaseCounts: { buyPickupRadius: 4 } }), "buyPickupRadius");
+    expect(atCap.disabled).toBe(true);
+  });
+});
+
+describe("mergeEligible (Phase 2 §3)", () => {
+  it("is true when both slots hold the same kind + level, at a mergeable level (I or II)", () => {
+    expect(mergeEligible([{ kind: "tongue", level: 1 }, { kind: "tongue", level: 1 }])).toBe(true);
+    expect(mergeEligible([{ kind: "bubble", level: 2 }, { kind: "bubble", level: 2 }])).toBe(true);
+  });
+
+  it("is false when a slot is empty", () => {
+    expect(mergeEligible([{ kind: "tongue", level: 1 }, null])).toBe(false);
+    expect(mergeEligible([null, null])).toBe(false);
+  });
+
+  it("is false when the kinds differ", () => {
+    expect(mergeEligible([{ kind: "tongue", level: 1 }, { kind: "bubble", level: 1 }])).toBe(false);
+  });
+
+  it("is false when the levels differ", () => {
+    expect(mergeEligible([{ kind: "tongue", level: 1 }, { kind: "tongue", level: 2 }])).toBe(false);
+  });
+
+  it("is false at level III (no Lv IV to merge into)", () => {
+    expect(mergeEligible([{ kind: "croak", level: 3 }, { kind: "croak", level: 3 }])).toBe(false);
   });
 });

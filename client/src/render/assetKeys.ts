@@ -7,6 +7,8 @@ export const SPRITE_KEYS = {
   frog: "frog",
   wasp: "wasp",
   snail: "snail",
+  heron: "heron",
+  crown: "crown",
   acidGlob: "acidGlob",
   bubble: "bubble",
   flyPickup: "flyPickup",
@@ -25,15 +27,23 @@ export const SFX_KEYS = {
   pickup: "sfxPickup",
   down: "sfxDown",
   poof: "sfxPoof",
+  /** Phase 2 §4/P5: heron dive-swoop warning, played once per telegraph
+   * appearance (see render/entities.ts). */
+  telegraph: "sfxTelegraph",
 } as const;
 
 export const MUSIC_KEYS = {
   loop: "musicLoop",
 } as const;
 
-/** Wasp/snail are loaded as single rasterized images with two manually
+/** Wasp/snail/heron are loaded as single rasterized images with two manually
  * registered frames (0, 1) rather than a true Phaser spritesheet — see
  * BootScene.ts for why. Frame size per sprite, used both when registering
  * the frames and when rendering. */
 export const WASP_FRAME = { width: 32, height: 32 };
 export const SNAIL_FRAME = { width: 40, height: 40 };
+/** Heron sprite sheet frame size (Phase 2 §4/P5) — see heron.svg. */
+export const HERON_FRAME = { width: 48, height: 48 };
+/** Snail King boss (Phase 2 §4/P5): the existing snail texture/frames scaled
+ * up ×3 for its display size — see render/entities.ts. */
+export const SNAILKING_SCALE = 3;

@@ -215,6 +215,26 @@ const OUT = "/home/martin/frogtato/client/assets/audio";
 }
 
 // ---------------------------------------------------------------
+// 7b. sfx-telegraph (Phase 2 §4/P5): heron dive-swoop warning — a short,
+//    clearly RISING tone (distinct in contour from every other cue: tongue
+//    falls, bubble rises-then-pops, croak warbles low, hit/poof both fall,
+//    pickup rises but as a bright square chirp, down falls). This one is a
+//    clean sine ramp with a fast tremolo near the end to read as urgent
+//    "incoming" — no noise layer, so it stays audibly distinct from the
+//    noise-based tongue/hit/poof cues too. ~0.3s.
+{
+  const dur = 0.3;
+  const n = Math.round(dur * SR);
+  const raw = gen(dur, (t, i) => {
+    const env = envelope(i, 0.01, 0.05, 0.8, 0.08, n);
+    const freq = 300 + (t / dur) * 700; // steady rising sweep, low -> high
+    const tremolo = 1 + 0.25 * Math.sin(twoPi * 18 * t) * (t / dur); // builds urgency near the end
+    return sine(t, freq) * tremolo * env;
+  });
+  writeWav(`${OUT}/sfx-telegraph.wav`, normalize(raw));
+}
+
+// ---------------------------------------------------------------
 // 8. music-loop: mellow ambient pond loop, ~24s, loops cleanly.
 //    Layer: soft lowpass-filtered noise "water" pad (constant, loop-safe
 //    because noise has no phase to mismatch) + a gentle triangle-wave

@@ -16,7 +16,7 @@
 //    `Texture.add(frameIndex, 0, x, y, w, h)`. This gives sprites a normal
 //    `setFrame(0|1)` API without ever going through the spritesheet loader.
 import Phaser from "phaser";
-import { SPRITE_KEYS, SFX_KEYS, MUSIC_KEYS, WASP_FRAME, SNAIL_FRAME } from "../render/assetKeys.js";
+import { SPRITE_KEYS, SFX_KEYS, MUSIC_KEYS, WASP_FRAME, SNAIL_FRAME, HERON_FRAME } from "../render/assetKeys.js";
 
 /** localStorage key for the persisted mute toggle (T12b). Read here (to
  * seed the SoundManager's initial `mute` before music starts) and in
@@ -34,6 +34,8 @@ export class BootScene extends Phaser.Scene {
     this.load.svg(SPRITE_KEYS.frog, "sprites/frog.svg", { width: 48, height: 48 });
     this.load.svg(SPRITE_KEYS.wasp, "sprites/wasp.svg", { width: WASP_FRAME.width * 2, height: WASP_FRAME.height });
     this.load.svg(SPRITE_KEYS.snail, "sprites/snail.svg", { width: SNAIL_FRAME.width * 2, height: SNAIL_FRAME.height });
+    this.load.svg(SPRITE_KEYS.heron, "sprites/heron.svg", { width: HERON_FRAME.width * 2, height: HERON_FRAME.height });
+    this.load.svg(SPRITE_KEYS.crown, "sprites/crown.svg", { width: 32, height: 20 });
     this.load.svg(SPRITE_KEYS.acidGlob, "sprites/acid-glob.svg", { width: 12, height: 12 });
     this.load.svg(SPRITE_KEYS.bubble, "sprites/bubble.svg", { width: 14, height: 14 });
     this.load.svg(SPRITE_KEYS.flyPickup, "sprites/fly-pickup.svg", { width: 16, height: 16 });
@@ -50,15 +52,17 @@ export class BootScene extends Phaser.Scene {
     this.load.audio(SFX_KEYS.pickup, "audio/sfx-pickup.wav");
     this.load.audio(SFX_KEYS.down, "audio/sfx-down.wav");
     this.load.audio(SFX_KEYS.poof, "audio/sfx-poof.wav");
+    this.load.audio(SFX_KEYS.telegraph, "audio/sfx-telegraph.wav");
     this.load.audio(MUSIC_KEYS.loop, "audio/music-loop.wav");
   }
 
   create(): void {
-    // Manually register the two side-by-side frames of the wasp/snail
+    // Manually register the two side-by-side frames of the wasp/snail/heron
     // sheets (loaded as single rasterized images above) so sprites can use
     // `setFrame(0)` / `setFrame(1)` like a normal spritesheet.
     this.registerTwoFrameSheet(SPRITE_KEYS.wasp, WASP_FRAME.width, WASP_FRAME.height);
     this.registerTwoFrameSheet(SPRITE_KEYS.snail, SNAIL_FRAME.width, SNAIL_FRAME.height);
+    this.registerTwoFrameSheet(SPRITE_KEYS.heron, HERON_FRAME.width, HERON_FRAME.height);
 
     this.setupMusic();
 

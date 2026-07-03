@@ -1,0 +1,40 @@
+[
+  {
+    "enemies": [
+      { "id": "h1", "kind": "heron", "x": 100, "y": 100, "hp": 8, "maxHp": 8 }
+    ]
+  },
+  {
+    "enemies": [
+      {
+        "id": "h1",
+        "kind": "heron",
+        "x": 100,
+        "y": 100,
+        "hp": 8,
+        "maxHp": 8,
+        "telegraph": { "x1": 100, "y1": 100, "x2": 900, "y2": 100 }
+      },
+      { "id": "b1", "kind": "snailking", "x": 800, "y": 600, "hp": 120, "maxHp": 120 }
+    ]
+  },
+  {
+    "enemies": [
+      {
+        "id": "h1",
+        "kind": "heron",
+        "x": 500,
+        "y": 100,
+        "hp": 8,
+        "maxHp": 8,
+        "telegraph": { "x1": 100, "y1": 100, "x2": 900, "y2": 100 }
+      },
+      { "id": "b1", "kind": "snailking", "x": 800, "y": 600, "hp": 90, "maxHp": 120, "shelled": true }
+    ]
+  },
+  {
+    "enemies": [
+      { "id": "b1", "kind": "snailking", "x": 800, "y": 600, "hp": 90, "maxHp": 120, "shelled": false }
+    ]
+  }
+]
