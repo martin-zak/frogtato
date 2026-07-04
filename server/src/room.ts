@@ -30,6 +30,7 @@ import {
   applyClassLoadout,
   applyInput,
   createPlayer,
+  resetInput,
   sanitizeName,
   setWeaponSlot,
   stepPlayerMovement,
@@ -210,6 +211,7 @@ export class Room {
       if (timer) clearTimeout(timer);
       this.disconnectTimers.delete(player.id);
       player.connected = true;
+      resetInput(player);
       return player;
     }
     return undefined;

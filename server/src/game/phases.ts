@@ -9,7 +9,7 @@
 
 import { ARENA, REVIVE_HP_PCT, type ScoreRow } from '@frogtato/shared';
 import type { FlyState } from '../sim/flies.js';
-import { applyClassLoadout, type PlayerState } from '../sim/players.js';
+import { applyClassLoadout, resetInput, type PlayerState } from '../sim/players.js';
 
 /** Clamps the debug `timescale` message to the allowed 1..20 range. */
 export function clampTimescale(value: number): number {
@@ -98,6 +98,9 @@ export function resetPlayerForNewRun(player: PlayerState): void {
   player.damageDealt = 0;
   player.fliesCollected = 0;
   player.regenAccumSec = 0;
+  // A recreated GameScene restarts its seq counter from 0, so a preserved
+  // high seq would get every input of the new run discarded as stale.
+  resetInput(player);
 }
 
 // ---------------------------------------------------------------------------

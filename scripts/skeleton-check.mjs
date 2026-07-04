@@ -174,8 +174,10 @@ async function main() {
     reconnectPlayerId = welcome1.playerId;
     knownPlayerIds.push(welcome1.playerId);
 
-    // Move for a bit (just to exercise input handling; position isn't asserted).
-    let seq = 0;
+    // Move for a bit, ending with a direction HELD and a HIGH seq — simulates
+    // a long real session (seq in the thousands) cut off mid-keypress, which
+    // is the setup for the stale-seq reconnect regression asserted below.
+    let seq = 100000;
     const moveTimer = setInterval(() => {
       seq += 1;
       ws1.send(JSON.stringify({ type: 'input', seq, up: false, down: false, left: true, right: false }));
@@ -207,6 +209,33 @@ async function main() {
     );
     const pAfter = snapAfterReconnect.players.find((p) => p.id === reconnectPlayerId);
     check(`(reconnect) flies count restored (got ${pAfter?.flies})`, pAfter?.flies === 7);
+
+    // Regression (found in live play, 2026-07-04): the server must reset the
+    // player's held input + stale-seq tracking on reconnect. Pre-fix, ws1's
+    // final "left held @ seq ~100k" survived the reconnect: the frog drifted
+    // left forever while the fresh client's low seqs were discarded as stale.
+    await sleep(400);
+    const driftSnapA = await waitForMessage(ws2, (m) => m.type === 'snapshot');
+    await sleep(400);
+    const driftSnapB = await waitForMessage(ws2, (m) => m.type === 'snapshot');
+    const driftA = driftSnapA.players.find((p) => p.id === reconnectPlayerId);
+    const driftB = driftSnapB.players.find((p) => p.id === reconnectPlayerId);
+    const driftPx = Math.abs(driftB.x - driftA.x) + Math.abs(driftB.y - driftA.y);
+    check(`(reconnect) no phantom drift from pre-disconnect held input (moved ${driftPx.toFixed(1)}px)`, driftPx < 5);
+
+    let seq2 = 0; // fresh client: seq restarts from scratch
+    const moveTimer2 = setInterval(() => {
+      seq2 += 1;
+      ws2.send(JSON.stringify({ type: 'input', seq: seq2, up: false, down: false, left: false, right: true }));
+    }, 1000 / 30);
+    await sleep(500);
+    clearInterval(moveTimer2);
+    const movedSnap = await waitForMessage(ws2, (m) => m.type === 'snapshot');
+    const pMoved = movedSnap.players.find((p) => p.id === reconnectPlayerId);
+    check(
+      `(reconnect) fresh low-seq input moves the player again (dx=${(pMoved.x - driftB.x).toFixed(1)}px)`,
+      pMoved.x - driftB.x > 20,
+    );
 
     ws2.close();
   }

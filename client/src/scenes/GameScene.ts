@@ -62,7 +62,6 @@ export class GameScene extends Phaser.Scene {
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd!: { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key };
 
-  private seq = 0;
   private lastSent: InputState = { up: false, down: false, left: false, right: false };
   private sendAccumMs = 0;
   private lastOwnFlies: number | null = null;
@@ -73,7 +72,6 @@ export class GameScene extends Phaser.Scene {
 
   create(): void {
     this.net = this.registry.get("net") as NetClient;
-    this.seq = 0;
     this.lastSent = { up: false, down: false, left: false, right: false };
     this.sendAccumMs = 0;
     this.lastOwnFlies = null;
@@ -143,8 +141,9 @@ export class GameScene extends Phaser.Scene {
     const intervalMs = 1000 / INPUT_HZ;
 
     if (changed || this.sendAccumMs >= intervalMs) {
-      this.seq += 1;
-      this.net.send({ type: "input", seq: this.seq, ...state });
+      // Seq lives on the NetClient, not this scene: a recreated GameScene
+      // (rematch) restarting from 0 would look stale to the server.
+      this.net.send({ type: "input", seq: this.net.nextInputSeq(), ...state });
       this.lastSent = state;
       this.sendAccumMs = 0;
     }

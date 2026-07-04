@@ -169,6 +169,17 @@ export function sanitizeName(raw: string): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+/**
+ * Clears held keys and rewinds seq tracking. Must be called whenever a socket
+ * (re)binds to this player or a run resets: the client's seq counter restarts
+ * from 0 in both situations, so a preserved high seq would make applyInput
+ * discard every subsequent input as stale while the last held direction keeps
+ * applying forever.
+ */
+export function resetInput(player: PlayerState): void {
+  player.input = { seq: -1, up: false, down: false, left: false, right: false };
+}
+
 /** Applies a client `input` message, ignoring it if its seq is stale (<= last applied). */
 export function applyInput(player: PlayerState, msg: Extract<ClientMsg, { type: 'input' }>): void {
   if (msg.seq <= player.input.seq) return;

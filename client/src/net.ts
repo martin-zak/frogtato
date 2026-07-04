@@ -69,6 +69,16 @@ export class NetClient {
   playerId: string | null = null;
   token: string | undefined = loadStoredToken();
 
+  /** Input-seq counter, monotonic for the client's lifetime. Owned here (not
+   * by GameScene) so scene re-entry can't rewind it; the server additionally
+   * resets its stale-seq tracking on reconnect and run reset. */
+  private inputSeq = 0;
+
+  nextInputSeq(): number {
+    this.inputSeq += 1;
+    return this.inputSeq;
+  }
+
   /** Opens the websocket. `host` defaults to the page's own hostname.
    * Remembers `host` so a later auto-reconnect (see `scheduleReconnect`)
    * targets the same server. */

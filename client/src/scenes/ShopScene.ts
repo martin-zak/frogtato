@@ -6,18 +6,17 @@
 // constants the server (T9) validates against; this scene only renders that
 // model and forwards clicks as `buy`/`ready` messages.
 //
-// PLAN T10b note: no `ui/phaseRouter.ts` exists yet at the time this scene
-// was written, so scene transitions in/out of "Shop" are not self-driven
-// here (that's the orchestrator's job once the router lands). Per the task
-// brief this scene still defensively unsubscribes its own net listeners the
-// moment a snapshot reports phase !== "shop", so it never keeps mutating
-// state or sending messages after the shop phase has ended, even if nothing
-// external stops the scene.
+// Scene transitions: entry into "Shop" is driven by the other scenes'
+// phaseRouter calls, but the EXIT must be driven from here — while this is
+// the active scene, no other scene is running to observe the phase change.
+// (Regression found in live play 2026-07-04: teardown-without-routing left
+// the game stuck on the shop screen after ready/timer ended the shop.)
 
 import Phaser from "phaser";
-import type { GameEvent, PlayerSnap } from "@frogtato/shared";
+import type { GameEvent, Phase, PlayerSnap } from "@frogtato/shared";
 import type { NetClient } from "../net.js";
 import { computeShopOffers, mergeEligible, MERGE_OFFER_ID, type ShopOfferView } from "../ui/shop/catalog.js";
+import { routeToPhase } from "../ui/phaseRouter.js";
 
 const COLOR_BG = 0x0a1a2a;
 const COLOR_AFFORDABLE = 0x2e7d5b;
@@ -206,10 +205,8 @@ export class ShopScene extends Phaser.Scene {
 
   private handleSnapshot(phase: string, phaseEndsAt: number | null, players: PlayerSnap[]): void {
     if (phase !== "shop") {
-      // Defensive cleanup per the task brief: stop reacting once the shop
-      // phase has ended, even without an external router driving scene
-      // transitions yet.
       if (this.active) this.teardown();
+      routeToPhase(this, phase as Phase);
       return;
     }
     if (!this.active) return; // torn down already (shouldn't happen while phase stays "shop")
