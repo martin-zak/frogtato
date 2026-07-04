@@ -190,17 +190,31 @@ export class NetClient {
         this.playerId = msg.playerId;
         this.token = msg.token;
         storeToken(msg.token);
-        for (const fn of this.welcomeListeners) fn(msg);
+        this.dispatch(this.welcomeListeners, msg, "welcome");
         break;
       }
       case "snapshot": {
         this.pushSnapshot(msg);
-        for (const fn of this.snapshotListeners) fn(msg);
+        this.dispatch(this.snapshotListeners, msg, "snapshot");
         break;
       }
       case "event": {
-        for (const fn of this.eventListeners) fn(msg.event);
+        this.dispatch(this.eventListeners, msg.event, "event");
         break;
+      }
+    }
+  }
+
+  /** One throwing listener must never starve the listeners after it in the
+   * set (e.g. a stale listener from a shut-down scene touching destroyed
+   * GameObjects would otherwise silently kill every later subscriber —
+   * regression found in live play 2026-07-04 as an "empty shop"). */
+  private dispatch<T>(listeners: Set<Listener<T>>, payload: T, kind: string): void {
+    for (const fn of listeners) {
+      try {
+        fn(payload);
+      } catch (err) {
+        console.error(`[net] ${kind} listener threw (continuing with remaining listeners):`, err);
       }
     }
   }
