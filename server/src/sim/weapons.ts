@@ -9,7 +9,7 @@
 import { ENEMY_DEFS, WEAPON_DEFS, type GameEvent, type WeaponKind } from '@frogtato/shared';
 import * as combat from './combat.js';
 import { WEAPON_KIND_BY_TYPE, type PlayerState } from './players.js';
-import { ENEMY_KIND_BY_TYPE, type EnemyState } from './enemies.js';
+import { applyHitStagger, ENEMY_KIND_BY_TYPE, type EnemyState } from './enemies.js';
 import { spawnProjectileTowards, type ProjectileState } from './projectiles.js';
 
 export interface WeaponContext {
@@ -97,6 +97,7 @@ function hitEnemy(player: PlayerState, enemy: EnemyState, amount: number, ctx: W
       ? combat.mitigateFlatArmor(amount, ENEMY_DEFS.snailKing.shellArmor)
       : amount;
   player.damageDealt += mitigated;
+  applyHitStagger(enemy);
   const died = combat.damageEnemy(enemy, kind, flyDrop, mitigated, ctx.emit, ctx.spawnFlies);
   if (died) {
     player.killCount += 1;

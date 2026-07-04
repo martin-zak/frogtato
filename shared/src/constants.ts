@@ -307,7 +307,10 @@ export const ENEMY_DEFS: Readonly<{
   wasp: {
     type: 'wasp',
     hp: 4,
-    speed: 260,
+    // TUNING (live playtest 2026-07-04): was 260 — faster than every frog's
+    // base 220, which made wasps inescapable. Now slightly slower than the
+    // frog so kiting works; pressure comes from numbers, not raw speed.
+    speed: 200,
     contactDamage: 2,
     contactCooldownSec: 0.5,
     flyDrop: 1,
@@ -554,6 +557,15 @@ export const ARENA: ArenaDef = {
   minEnemySpawnDistanceFromPlayers: 250,
   enemySpawnAtEdge: true,
 };
+
+/**
+ * Hit-stagger (live playtest 2026-07-04, Brotato-style): a regular enemy
+ * that takes weapon damage fully stops (no movement, no attacks) for this
+ * long, giving hits visible impact and the player breathing room. The Snail
+ * King is immune — it would be permanently stun-locked by auto-fire.
+ * TUNING.
+ */
+export const ENEMY_HIT_STAGGER_SEC = 0.35;
 
 // ---------------------------------------------------------------------------
 // Netcode (DESIGN §8-§9)

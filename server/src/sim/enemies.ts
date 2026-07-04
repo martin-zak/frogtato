@@ -13,7 +13,7 @@
 // (damage resolution, debug kill, wave-end cleanup, fly drops) keeps working
 // on them for free — only the per-tick AI branches, in stepEnemyAi below.
 
-import { ARENA, ENEMY_DEFS, type EnemyKind, type EnemySnap } from '@frogtato/shared';
+import { ARENA, ENEMY_DEFS, ENEMY_HIT_STAGGER_SEC, type EnemyKind, type EnemySnap } from '@frogtato/shared';
 import { PLAYER_RADIUS, WASP_RADIUS, ACID_PROJECTILE_RADIUS, HERON_RADIUS } from './combat.js';
 import type { PlayerState } from './players.js';
 import { circlesOverlap, spawnProjectileTowards, type ProjectileState } from './projectiles.js';
@@ -53,6 +53,8 @@ export interface EnemyState {
   y: number;
   hp: number;
   maxHp: number;
+  /** Hit-stagger: while > 0 the enemy is fully inert (movement + attacks). */
+  staggerRemainingSec: number;
   /** Wasp only: remaining time before this wasp can deal contact damage again. */
   contactCooldownRemainingSec: number;
   /** Snail only: remaining time before it can fire its next acid glob. */
@@ -90,6 +92,7 @@ export function createEnemy(id: string, type: EnemyTypeInternal, x: number, y: n
     y,
     hp: def.hp,
     maxHp: def.hp,
+    staggerRemainingSec: 0,
     contactCooldownRemainingSec: 0,
     // Start snails on a full cooldown so they don't spit the instant they spawn.
     spitCooldownRemainingSec: type === 'snailSpitter' ? ENEMY_DEFS.snailSpitter.spitIntervalSec : 0,
@@ -113,6 +116,12 @@ export function createEnemy(id: string, type: EnemyTypeInternal, x: number, y: n
     };
   }
   return enemy;
+}
+
+/** Applies the Brotato-style hit-stagger on weapon damage. Boss-immune. */
+export function applyHitStagger(enemy: EnemyState): void {
+  if (enemy.type === 'snailKing') return;
+  enemy.staggerRemainingSec = ENEMY_HIT_STAGGER_SEC;
 }
 
 export function toEnemySnap(e: EnemyState): EnemySnap {
@@ -232,6 +241,14 @@ export interface EnemyAiContext {
 
 /** Steps one enemy's AI + cooldowns for one tick. */
 export function stepEnemyAi(enemy: EnemyState, ctx: EnemyAiContext): void {
+  // Hit-stagger (live playtest 2026-07-04): a staggered enemy is fully inert —
+  // no movement, no attacks, cooldowns frozen. Snail King never gets staggered
+  // (see applyHitStagger), so the boss fight is unaffected.
+  if (enemy.staggerRemainingSec > 0) {
+    enemy.staggerRemainingSec -= ctx.dtSec;
+    return;
+  }
+
   if (enemy.contactCooldownRemainingSec > 0) enemy.contactCooldownRemainingSec -= ctx.dtSec;
   if (enemy.spitCooldownRemainingSec > 0) enemy.spitCooldownRemainingSec -= ctx.dtSec;
 

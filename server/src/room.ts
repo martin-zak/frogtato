@@ -39,6 +39,7 @@ import {
 } from './sim/players.js';
 import * as combat from './sim/combat.js';
 import {
+  applyHitStagger,
   createEnemy,
   ENEMY_KIND_BY_TYPE,
   pickFarthestArenaEdgePoint,
@@ -616,6 +617,7 @@ export class Room {
               ? combat.mitigateFlatArmor(projectile.damage, ENEMY_DEFS.snailKing.shellArmor)
               : projectile.damage;
           if (owner) owner.damageDealt += mitigatedDamage;
+          applyHitStagger(enemy);
           const died = combat.damageEnemy(
             enemy,
             ENEMY_KIND_BY_TYPE[enemy.type],
