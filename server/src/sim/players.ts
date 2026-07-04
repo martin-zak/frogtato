@@ -135,8 +135,9 @@ export function createPlayer(id: string, colorIndex: number, token: string): Pla
  * Applies a class's stat-modifier bundle (classBaseStats) + starting weapon
  * to a player, in place. Used on first join (DEFAULT_CLASS), on `pickClass`
  * in the lobby, and on every full run reset (rematch keeps the player's last
- * class — Phase 2 §5). Resets HP to full at the new maxHp, replaces both
- * weapon slots with [starting weapon Lv1, null], and zeroes cooldowns.
+ * class — Phase 2 §5). Resets HP to full at the new maxHp, replaces all
+ * weapon slots with [starting weapon Lv1, null, null, ...] (length driven by
+ * STARTING_WEAPON_SLOTS, i.e. WEAPON_SLOT_COUNT), and zeroes cooldowns.
  */
 export function applyClassLoadout(player: PlayerState, classId: FrogClassId): void {
   player.class = classId;
@@ -152,7 +153,7 @@ export function applyClassLoadout(player: PlayerState, classId: FrogClassId): vo
   player.maxHp = effective.maxHp;
   player.hp = effective.maxHp;
   const startingWeapon = FROG_CLASSES[classId].startingWeapon;
-  player.weapons = [{ weapon: startingWeapon, level: 1 }, null];
+  player.weapons = STARTING_WEAPON_SLOTS.map((_, i) => (i === 0 ? { weapon: startingWeapon, level: 1 } : null));
   player.weaponCooldowns = player.weapons.map(() => 0);
 }
 
@@ -186,8 +187,10 @@ export function applyInput(player: PlayerState, msg: Extract<ClientMsg, { type: 
   player.input = { seq: msg.seq, up: msg.up, down: msg.down, left: msg.left, right: msg.right };
 }
 
-/** Clamps a point to lie inside (or on) the ARENA ellipse, centered on the arena. */
-function clampToArenaEllipse(x: number, y: number): { x: number; y: number } {
+/** Clamps a point to lie inside (or on) the ARENA ellipse, centered on the arena.
+ * Exported for sim/enemies.ts: crawling enemies (snails, the boss) are clamped
+ * too — flying ones (wasps, herons) may cross the pond edge. */
+export function clampToArenaEllipse(x: number, y: number): { x: number; y: number } {
   const cx = ARENA.width / 2;
   const cy = ARENA.height / 2;
   const rx = ARENA.width / 2;

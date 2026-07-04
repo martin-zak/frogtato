@@ -132,12 +132,12 @@ describe('Phase 2 weapon merging', () => {
 });
 
 describe('Phase 2 heron', () => {
-  it('hp 8, telegraph 0.8s, swoop damage 4, drops 2 flies, appears wave 3+', () => {
+  it('hp 8, telegraph 0.8s, swoop damage 4, drops 4 flies (2026-07-04 economy tuning), appears wave 3+', () => {
     const heron = ENEMY_DEFS.heron;
     expect(heron.hp).toBe(8);
     expect(heron.telegraphSec).toBe(0.8);
     expect(heron.swoopDamage).toBe(4);
-    expect(heron.flyDrop).toBe(2);
+    expect(heron.flyDrop).toBe(4);
     expect(heron.minWave).toBe(3);
   });
 

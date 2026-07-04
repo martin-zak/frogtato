@@ -8,7 +8,8 @@
 // §3 The Frog (player character)
 // ---------------------------------------------------------------------------
 
-export const WEAPON_SLOT_COUNT = 2;
+// TUNING (live playtest 2026-07-04): 2 -> 3 weapon slots.
+export const WEAPON_SLOT_COUNT = 3;
 
 export interface FrogBaseStats {
   readonly maxHp: number;
@@ -207,6 +208,7 @@ export interface WeaponSlot {
 export const STARTING_WEAPON_SLOTS: readonly (WeaponSlot | null)[] = [
   { weapon: 'tongueLash', level: 1 },
   null,
+  null,
 ];
 
 // ---------------------------------------------------------------------------
@@ -313,7 +315,8 @@ export const ENEMY_DEFS: Readonly<{
     speed: 200,
     contactDamage: 2,
     contactCooldownSec: 0.5,
-    flyDrop: 1,
+    // TUNING (live playtest 2026-07-04): fly drops increased across the board.
+    flyDrop: 2,
   },
   snailSpitter: {
     type: 'snailSpitter',
@@ -323,7 +326,7 @@ export const ENEMY_DEFS: Readonly<{
     spitIntervalSec: 2.5,
     projectileDamage: 3,
     projectileSpeed: 250,
-    flyDrop: 3,
+    flyDrop: 5,
   },
   heron: {
     type: 'heron',
@@ -332,7 +335,7 @@ export const ENEMY_DEFS: Readonly<{
     swoopSpeed: 500,
     telegraphSec: 0.8,
     swoopDamage: 4,
-    flyDrop: 2,
+    flyDrop: 4,
     minWave: 3,
   },
   snailKing: {
@@ -346,7 +349,7 @@ export const ENEMY_DEFS: Readonly<{
     shellDurationSec: 2,
     shellArmor: 5,
     shellIntervalSec: 8,
-    flyDrop: 30,
+    flyDrop: 50,
     spawnWave: 5,
     spawnAtRemainingSec: 20,
     hardCapExtraSec: 30,

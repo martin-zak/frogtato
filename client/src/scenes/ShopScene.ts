@@ -14,6 +14,7 @@
 
 import Phaser from "phaser";
 import type { GameEvent, Phase, PlayerSnap } from "@frogtato/shared";
+import { WEAPON_SLOT_COUNT } from "@frogtato/shared";
 import type { NetClient } from "../net.js";
 import { computeShopOffers, mergeEligible, MERGE_OFFER_ID, type ShopOfferView } from "../ui/shop/catalog.js";
 import { routeToPhase } from "../ui/phaseRouter.js";
@@ -48,8 +49,10 @@ interface OfferButton {
   title: Phaser.GameObjects.Text;
   price: Phaser.GameObjects.Text;
   reason: Phaser.GameObjects.Text;
-  slotBoxes: [Phaser.GameObjects.Rectangle, Phaser.GameObjects.Rectangle];
-  slotTexts: [Phaser.GameObjects.Text, Phaser.GameObjects.Text];
+  /** One mini-button per weapon slot (length WEAPON_SLOT_COUNT), shown/hidden
+   * per-offer depending on how many slotOptions the offer actually has. */
+  slotBoxes: Phaser.GameObjects.Rectangle[];
+  slotTexts: Phaser.GameObjects.Text[];
 }
 
 export class ShopScene extends Phaser.Scene {
@@ -127,8 +130,8 @@ export class ShopScene extends Phaser.Scene {
     this.buildOfferButtons();
 
     // Right column layout (absolute y's, independent of the offer grid's
-    // row count on the left): Stats (now 6 lines: HP/Damage/Move
-    // speed/Armor/Regen/Pickup radius + 2 weapon slot lines), an optional
+    // row count on the left): Stats (HP/Damage/Move speed/Armor/Regen/Pickup
+    // radius, plus one weapon slot line per WEAPON_SLOT_COUNT), an optional
     // Merge button, then Ready.
     const rightColX = OFFER_X + OFFER_BOX_WIDTH + 60;
     this.add.text(rightColX, OFFER_START_Y, "Your Stats", {
@@ -247,8 +250,7 @@ export class ShopScene extends Phaser.Scene {
           `Armor: ${own.stats.armor}`,
           `Regen: ${own.stats.regen} hp/5s`,
           `Pickup radius: ${Math.round(own.stats.pickupRadius)} px`,
-          `Slot 1: ${weaponSlotLabel(own.weapons[0] ?? null)}`,
-          `Slot 2: ${weaponSlotLabel(own.weapons[1] ?? null)}`,
+          ...own.weapons.map((w, i) => `Slot ${i + 1}: ${weaponSlotLabel(w ?? null)}`),
         ].join("\n"),
       );
 
@@ -337,36 +339,35 @@ export class ShopScene extends Phaser.Scene {
         color: "#ff8a80",
       });
 
-      const slotBoxWidth = 60;
+      // Mini slot buttons are laid out right-to-left along the bottom edge
+      // of the offer box, one per possible weapon slot. Shrunk from the
+      // original fixed 60px/2-slot layout (60w, 4px gap) down to 54px so 3
+      // of them (WEAPON_SLOT_COUNT) still fit comfortably inside the
+      // 300px-wide offer box with room to spare.
+      const slotBoxWidth = 54;
+      const slotBoxGap = 4;
       const slotBoxHeight = 16;
-      const slotBoxes: [Phaser.GameObjects.Rectangle, Phaser.GameObjects.Rectangle] = [
-        this.add
-          .rectangle(OFFER_X + OFFER_BOX_WIDTH - slotBoxWidth * 2 - 8, y + OFFER_BOX_HEIGHT - slotBoxHeight - 4, slotBoxWidth, slotBoxHeight, COLOR_AFFORDABLE)
+      const slotBoxes: Phaser.GameObjects.Rectangle[] = [];
+      const slotTexts: Phaser.GameObjects.Text[] = [];
+      for (let s = 0; s < WEAPON_SLOT_COUNT; s++) {
+        const slotsFromRight = WEAPON_SLOT_COUNT - s;
+        const x = OFFER_X + OFFER_BOX_WIDTH - slotsFromRight * (slotBoxWidth + slotBoxGap);
+        const boxY = y + OFFER_BOX_HEIGHT - slotBoxHeight - 4;
+        const sb = this.add
+          .rectangle(x, boxY, slotBoxWidth, slotBoxHeight, COLOR_AFFORDABLE)
           .setOrigin(0, 0)
-          .setVisible(false),
-        this.add
-          .rectangle(OFFER_X + OFFER_BOX_WIDTH - slotBoxWidth - 4, y + OFFER_BOX_HEIGHT - slotBoxHeight - 4, slotBoxWidth, slotBoxHeight, COLOR_AFFORDABLE)
-          .setOrigin(0, 0)
-          .setVisible(false),
-      ];
-      const slotTexts: [Phaser.GameObjects.Text, Phaser.GameObjects.Text] = [
-        this.add
-          .text(slotBoxes[0].x + slotBoxWidth / 2, slotBoxes[0].y + slotBoxHeight / 2, "", {
+          .setVisible(false);
+        const st = this.add
+          .text(sb.x + slotBoxWidth / 2, sb.y + slotBoxHeight / 2, "", {
             fontFamily: "sans-serif",
             fontSize: "10px",
             color: "#101418",
           })
           .setOrigin(0.5)
-          .setVisible(false),
-        this.add
-          .text(slotBoxes[1].x + slotBoxWidth / 2, slotBoxes[1].y + slotBoxHeight / 2, "", {
-            fontFamily: "sans-serif",
-            fontSize: "10px",
-            color: "#101418",
-          })
-          .setOrigin(0.5)
-          .setVisible(false),
-      ];
+          .setVisible(false);
+        slotBoxes.push(sb);
+        slotTexts.push(st);
+      }
 
       const button: OfferButton = { box, title, price, reason, slotBoxes, slotTexts };
       // offerId/slot assigned once the first render pass knows the catalog
@@ -414,7 +415,7 @@ export class ShopScene extends Phaser.Scene {
       button.title.setText(offer.title);
       button.price.setText(`${offer.price} 🪰`);
 
-      const hasSlotOptions = offer.slotOptions !== undefined && offer.slotOptions.length === 2;
+      const hasSlotOptions = offer.slotOptions !== undefined && offer.slotOptions.length >= 2;
 
       if (offer.disabled) {
         button.box.setFillStyle(COLOR_DISABLED);
@@ -463,7 +464,7 @@ export class ShopScene extends Phaser.Scene {
     if (!offerId) return;
     const offer = this.offerViewByIndex.find((o) => o?.offerId === offerId);
     if (!offer || offer.disabled) return;
-    if (offer.slotOptions && offer.slotOptions.length === 2) return; // handled by slot buttons
+    if (offer.slotOptions && offer.slotOptions.length >= 2) return; // handled by slot buttons
     if (offer.autoSlot !== undefined) {
       this.net.send({ type: "buy", offerId, slot: offer.autoSlot });
     } else {

@@ -69,15 +69,16 @@ export interface ShopSlotOption {
 export interface ShopOfferView {
   offerId: string;
   title: string;
-  /** Headline price. For a two-slot offer this is the cheaper of the two
-   * (both are shown individually via `slotOptions`). */
+  /** Headline price. For a multi-slot offer this is the cheapest option
+   * (each is shown individually via `slotOptions`). */
   price: number;
   affordable: boolean;
   disabled: boolean;
   reason?: string;
   /** Present + length 1 when exactly one valid slot exists: send `buy` with this slot directly. */
   autoSlot?: number;
-  /** Present + length 2 when two valid slots exist: render two buttons, one per slot. */
+  /** Present when 2+ valid slots exist (length can be 2 or 3, per WEAPON_SLOT_COUNT):
+   * render one button per slot. */
   slotOptions?: ShopSlotOption[];
 }
 
@@ -170,7 +171,7 @@ function computeUpgradeOffer(own: PlayerSnap, priceOverrides: PriceOverrides): S
     };
   }
 
-  // Two eligible slots: per-slot prices always freshly computed (see
+  // 2+ eligible slots: per-slot prices always freshly computed (see
   // ambiguity note #4 — priceNext can't be attributed to one slot here).
   const slotOptions: ShopSlotOption[] = eligible.map(({ slot, level }) => {
     const nextLevel = (level + 1) as 2 | 3;
@@ -211,21 +212,30 @@ export type ShopWeaponLevel = BalanceWeaponLevel;
 // Phase 2 §3 — Weapon Merging
 // ---------------------------------------------------------------------------
 
-/** A player's two weapon slots, in slot order — the same shape as
- * `PlayerSnap.weapons`. */
+/** A player's weapon slots, in slot order — the same shape as
+ * `PlayerSnap.weapons` (length WEAPON_SLOT_COUNT). */
 export type WeaponSlots = readonly ({ kind: WeaponKind; level: WeaponLevel } | null)[];
 
 /**
  * Pure mirror of the server's merge eligibility check (DESIGN-PHASE2.md
- * §3): true exactly when both slots hold the same weapon kind at the same
- * level, and that level is mergeable (I or II — MERGEABLE_LEVELS; III has
- * no next level). Used to decide whether ShopScene shows the Merge button;
- * the server re-validates independently when the `merge` message arrives.
+ * §3, generalized past 2 slots for the 3-slot tuning): true when ANY pair
+ * of slots (i < j) holds the same weapon kind at the same level, and that
+ * level is mergeable (I or II — MERGEABLE_LEVELS; III has no next level).
+ * Used to decide whether ShopScene shows the Merge button; the server
+ * re-validates independently (finding the first such pair) when the
+ * `merge` message arrives.
  */
 export function mergeEligible(weapons: WeaponSlots): boolean {
-  const [a, b] = weapons;
-  if (!a || !b) return false;
-  if (a.kind !== b.kind) return false;
-  if (a.level !== b.level) return false;
-  return (MERGEABLE_LEVELS as readonly number[]).includes(a.level);
+  for (let i = 0; i < weapons.length; i++) {
+    const a = weapons[i];
+    if (!a) continue;
+    for (let j = i + 1; j < weapons.length; j++) {
+      const b = weapons[j];
+      if (!b) continue;
+      if (a.kind !== b.kind) continue;
+      if (a.level !== b.level) continue;
+      if ((MERGEABLE_LEVELS as readonly number[]).includes(a.level)) return true;
+    }
+  }
+  return false;
 }

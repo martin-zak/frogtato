@@ -14,7 +14,7 @@ function makeOwn(overrides: Partial<PlayerSnap> = {}): PlayerSnap {
     flies: 0,
     downed: false,
     spectator: false,
-    weapons: [{ kind: "tongue", level: 1 }, null],
+    weapons: [{ kind: "tongue", level: 1 }, null, null],
     stats: { damagePct: 0, moveSpeed: 220, maxHp: 20, armor: 0, regen: 0, pickupRadius: 60 },
     ready: false,
     ...overrides,
@@ -29,7 +29,7 @@ function findOffer(views: ReturnType<typeof computeShopOffers>, offerId: string)
 
 describe("computeShopOffers — affordability boundary", () => {
   it("is affordable when funds exactly equal price", () => {
-    const own = makeOwn({ flies: 12, weapons: [null, null] });
+    const own = makeOwn({ flies: 12, weapons: [null, null, null] });
     const views = computeShopOffers({ own });
     const buyTongue = findOffer(views, "buyTongueLash");
     expect(buyTongue.price).toBe(12);
@@ -37,7 +37,7 @@ describe("computeShopOffers — affordability boundary", () => {
   });
 
   it("is not affordable when funds are 1 short", () => {
-    const own = makeOwn({ flies: 11, weapons: [null, null] });
+    const own = makeOwn({ flies: 11, weapons: [null, null, null] });
     const views = computeShopOffers({ own });
     const buyTongue = findOffer(views, "buyTongueLash");
     expect(buyTongue.affordable).toBe(false);
@@ -88,12 +88,13 @@ describe("computeShopOffers — move-speed cap", () => {
 });
 
 describe("computeShopOffers — weapon-buy slot rules", () => {
-  it("disables all weapon-buy offers with reason 'slots full' when both slots occupied", () => {
+  it("disables all weapon-buy offers with reason 'slots full' when all 3 slots occupied", () => {
     const own = makeOwn({
       flies: 999,
       weapons: [
         { kind: "tongue", level: 1 },
         { kind: "bubble", level: 1 },
+        { kind: "croak", level: 1 },
       ],
     });
     const views = computeShopOffers({ own });
@@ -105,28 +106,43 @@ describe("computeShopOffers — weapon-buy slot rules", () => {
   });
 
   it("auto-fills the single empty slot when only one is free", () => {
-    const own = makeOwn({ flies: 999, weapons: [{ kind: "tongue", level: 1 }, null] });
-    const v = findOffer(computeShopOffers({ own }), "buyBubbleBlaster");
+    const own = makeOwn({
+      flies: 999,
+      weapons: [{ kind: "tongue", level: 1 }, { kind: "bubble", level: 1 }, null],
+    });
+    const v = findOffer(computeShopOffers({ own }), "buyCroakNova");
     expect(v.disabled).toBe(false);
-    expect(v.autoSlot).toBe(1);
+    expect(v.autoSlot).toBe(2);
     expect(v.slotOptions).toBeUndefined();
   });
 
-  it("offers two slot buttons when both slots are empty", () => {
-    const own = makeOwn({ flies: 999, weapons: [null, null] });
+  it("offers a slot button per empty slot when two are empty", () => {
+    const own = makeOwn({ flies: 999, weapons: [{ kind: "tongue", level: 1 }, null, null] });
+    const v = findOffer(computeShopOffers({ own }), "buyCroakNova");
+    expect(v.disabled).toBe(false);
+    expect(v.autoSlot).toBeUndefined();
+    expect(v.slotOptions).toEqual([
+      { slot: 1, price: 18, affordable: true },
+      { slot: 2, price: 18, affordable: true },
+    ]);
+  });
+
+  it("offers a slot button per empty slot when all 3 are empty", () => {
+    const own = makeOwn({ flies: 999, weapons: [null, null, null] });
     const v = findOffer(computeShopOffers({ own }), "buyCroakNova");
     expect(v.disabled).toBe(false);
     expect(v.autoSlot).toBeUndefined();
     expect(v.slotOptions).toEqual([
       { slot: 0, price: 18, affordable: true },
       { slot: 1, price: 18, affordable: true },
+      { slot: 2, price: 18, affordable: true },
     ]);
   });
 });
 
 describe("computeShopOffers — weapon-upgrade pricing", () => {
   it("prices an upgrade to level II at 20 for a single eligible level-I slot", () => {
-    const own = makeOwn({ flies: 999, weapons: [{ kind: "tongue", level: 1 }, null] });
+    const own = makeOwn({ flies: 999, weapons: [{ kind: "tongue", level: 1 }, null, null] });
     const v = findOffer(computeShopOffers({ own }), UPGRADE_OFFER_ID);
     expect(v.disabled).toBe(false);
     expect(v.price).toBe(20);
@@ -134,7 +150,7 @@ describe("computeShopOffers — weapon-upgrade pricing", () => {
   });
 
   it("prices an upgrade to level III at 35 for a single eligible level-II slot", () => {
-    const own = makeOwn({ flies: 999, weapons: [{ kind: "tongue", level: 2 }, null] });
+    const own = makeOwn({ flies: 999, weapons: [{ kind: "tongue", level: 2 }, null, null] });
     const v = findOffer(computeShopOffers({ own }), UPGRADE_OFFER_ID);
     expect(v.disabled).toBe(false);
     expect(v.price).toBe(35);
@@ -147,6 +163,7 @@ describe("computeShopOffers — weapon-upgrade pricing", () => {
       weapons: [
         { kind: "tongue", level: 1 },
         { kind: "bubble", level: 2 },
+        null,
       ],
     });
     const v = findOffer(computeShopOffers({ own }), UPGRADE_OFFER_ID);
@@ -158,15 +175,37 @@ describe("computeShopOffers — weapon-upgrade pricing", () => {
     expect(v.price).toBe(20); // headline price is the cheaper option
   });
 
-  it("disables with 'max level' when the only weapon is already level III", () => {
-    const own = makeOwn({ flies: 999, weapons: [{ kind: "tongue", level: 3 }, null] });
+  it("offers per-slot prices for all 3 slots when all 3 are eligible", () => {
+    const own = makeOwn({
+      flies: 999,
+      weapons: [
+        { kind: "tongue", level: 1 },
+        { kind: "bubble", level: 2 },
+        { kind: "croak", level: 1 },
+      ],
+    });
+    const v = findOffer(computeShopOffers({ own }), UPGRADE_OFFER_ID);
+    expect(v.disabled).toBe(false);
+    expect(v.slotOptions).toEqual([
+      { slot: 0, price: 20, affordable: true },
+      { slot: 1, price: 35, affordable: true },
+      { slot: 2, price: 20, affordable: true },
+    ]);
+    expect(v.price).toBe(20);
+  });
+
+  it("disables with 'max level' when every occupied slot is already level III", () => {
+    const own = makeOwn({
+      flies: 999,
+      weapons: [{ kind: "tongue", level: 3 }, null, null],
+    });
     const v = findOffer(computeShopOffers({ own }), UPGRADE_OFFER_ID);
     expect(v.disabled).toBe(true);
     expect(v.reason).toBe("max level");
   });
 
-  it("disables with 'no upgradeable slot' when both slots are empty", () => {
-    const own = makeOwn({ flies: 999, weapons: [null, null] });
+  it("disables with 'no upgradeable slot' when all 3 slots are empty", () => {
+    const own = makeOwn({ flies: 999, weapons: [null, null, null] });
     const v = findOffer(computeShopOffers({ own }), UPGRADE_OFFER_ID);
     expect(v.disabled).toBe(true);
     expect(v.reason).toBe("no upgradeable slot");
@@ -211,24 +250,52 @@ describe("computeShopOffers — Phase 2 §2 new stat offers (armor/regen/pickupR
 
 describe("mergeEligible (Phase 2 §3)", () => {
   it("is true when both slots hold the same kind + level, at a mergeable level (I or II)", () => {
-    expect(mergeEligible([{ kind: "tongue", level: 1 }, { kind: "tongue", level: 1 }])).toBe(true);
-    expect(mergeEligible([{ kind: "bubble", level: 2 }, { kind: "bubble", level: 2 }])).toBe(true);
+    expect(mergeEligible([{ kind: "tongue", level: 1 }, { kind: "tongue", level: 1 }, null])).toBe(true);
+    expect(mergeEligible([{ kind: "bubble", level: 2 }, { kind: "bubble", level: 2 }, null])).toBe(true);
   });
 
   it("is false when a slot is empty", () => {
-    expect(mergeEligible([{ kind: "tongue", level: 1 }, null])).toBe(false);
-    expect(mergeEligible([null, null])).toBe(false);
+    expect(mergeEligible([{ kind: "tongue", level: 1 }, null, null])).toBe(false);
+    expect(mergeEligible([null, null, null])).toBe(false);
   });
 
   it("is false when the kinds differ", () => {
-    expect(mergeEligible([{ kind: "tongue", level: 1 }, { kind: "bubble", level: 1 }])).toBe(false);
+    expect(mergeEligible([{ kind: "tongue", level: 1 }, { kind: "bubble", level: 1 }, null])).toBe(false);
   });
 
   it("is false when the levels differ", () => {
-    expect(mergeEligible([{ kind: "tongue", level: 1 }, { kind: "tongue", level: 2 }])).toBe(false);
+    expect(mergeEligible([{ kind: "tongue", level: 1 }, { kind: "tongue", level: 2 }, null])).toBe(false);
   });
 
   it("is false at level III (no Lv IV to merge into)", () => {
-    expect(mergeEligible([{ kind: "croak", level: 3 }, { kind: "croak", level: 3 }])).toBe(false);
+    expect(mergeEligible([{ kind: "croak", level: 3 }, { kind: "croak", level: 3 }, null])).toBe(false);
+  });
+
+  it("is true for a mergeable pair in slots 0 and 2 (not adjacent)", () => {
+    expect(mergeEligible([{ kind: "tongue", level: 1 }, null, { kind: "tongue", level: 1 }])).toBe(true);
+    expect(mergeEligible([{ kind: "bubble", level: 2 }, { kind: "croak", level: 1 }, { kind: "bubble", level: 2 }])).toBe(
+      true,
+    );
+  });
+
+  it("is false when all 3 slots hold different kinds", () => {
+    expect(
+      mergeEligible([
+        { kind: "tongue", level: 1 },
+        { kind: "bubble", level: 1 },
+        { kind: "croak", level: 1 },
+      ]),
+    ).toBe(false);
+  });
+
+  it("is true when more than one mergeable pair is present (all 3 slots identical)", () => {
+    // (0,1), (0,2), and (1,2) are all mergeable pairs here — still just true.
+    expect(
+      mergeEligible([
+        { kind: "tongue", level: 1 },
+        { kind: "tongue", level: 1 },
+        { kind: "tongue", level: 1 },
+      ]),
+    ).toBe(true);
   });
 });

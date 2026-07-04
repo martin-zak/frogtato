@@ -15,7 +15,7 @@
 
 import { ARENA, ENEMY_DEFS, ENEMY_HIT_STAGGER_SEC, type EnemyKind, type EnemySnap } from '@frogtato/shared';
 import { PLAYER_RADIUS, WASP_RADIUS, ACID_PROJECTILE_RADIUS, HERON_RADIUS } from './combat.js';
-import type { PlayerState } from './players.js';
+import { clampToArenaEllipse, type PlayerState } from './players.js';
 import { circlesOverlap, spawnProjectileTowards, type ProjectileState } from './projectiles.js';
 
 export type EnemyTypeInternal = 'wasp' | 'snailSpitter' | 'heron' | 'snailKing';
@@ -300,6 +300,12 @@ function stepSnail(enemy: EnemyState, target: PlayerState, ctx: EnemyAiContext):
     moveToward(enemy, enemy.x - dx, enemy.y - dy, def.speed, ctx.dtSec);
   }
 
+  // Snails crawl on the pond floor — retreating must not take them outside
+  // the arena (live playtest 2026-07-04). Flying enemies are exempt.
+  const clamped = clampToArenaEllipse(enemy.x, enemy.y);
+  enemy.x = clamped.x;
+  enemy.y = clamped.y;
+
   if (enemy.spitCooldownRemainingSec <= 0) {
     enemy.spitCooldownRemainingSec = def.spitIntervalSec;
     ctx.spawnProjectile(
@@ -498,6 +504,10 @@ function stepSnailKing(enemy: EnemyState, ctx: EnemyAiContext): void {
   if (!target) return;
 
   moveToward(enemy, target.x, target.y, def.speed, ctx.dtSec);
+  // The boss is a crawler like regular snails — keep it inside the pond.
+  const clamped = clampToArenaEllipse(enemy.x, enemy.y);
+  enemy.x = clamped.x;
+  enemy.y = clamped.y;
 
   state.fireCooldownSec -= ctx.dtSec;
   if (state.fireCooldownSec <= 0) {

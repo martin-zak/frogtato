@@ -237,23 +237,41 @@ type MergedEvent = Extract<GameEvent, { type: 'merged' }>;
  * §3 / ids.ts's MERGE_OFFER_ID doc comment. Reason strings are part of the
  * client<->server contract (the client P5 task mirrors them exactly):
  *   "wrong phase"    — not in the shop phase (or spectating)
- *   "nothing to merge" — slots aren't both occupied with the same weapon kind
- *   "levels differ"  — same kind, but slot 0 and slot 1 are different levels
- *   "max level"      — same kind+level, but that level has no merge result (Lv III)
+ *   "nothing to merge" — no two occupied slots share a weapon kind
+ *   "levels differ"  — same kind exists in two slots, but at different levels
+ *   "max level"      — same kind+level pair, but no merge result exists (Lv III)
  */
 export function handleMerge(phase: Phase, player: PlayerState): PurchaseResultEvent | MergedEvent {
   if (phase !== 'shop' || player.spectator) return fail(player.id, MERGE_OFFER_ID, 'wrong phase');
 
-  const [a, b] = player.weapons;
-  if (!a || !b || a.weapon !== b.weapon) return fail(player.id, MERGE_OFFER_ID, 'nothing to merge');
-  if (a.level !== b.level) return fail(player.id, MERGE_OFFER_ID, 'levels differ');
+  // First mergeable pair (i < j) of same kind + same level wins. With 3 slots
+  // there can be multiple candidates; first-pair is deterministic and matches
+  // the client's mergeEligible ordering.
+  let sawLevelsDiffer = false;
+  let sawMaxLevel = false;
+  for (let i = 0; i < player.weapons.length; i++) {
+    const a = player.weapons[i];
+    if (!a) continue;
+    for (let j = i + 1; j < player.weapons.length; j++) {
+      const b = player.weapons[j];
+      if (!b || a.weapon !== b.weapon) continue;
+      if (a.level !== b.level) {
+        sawLevelsDiffer = true;
+        continue;
+      }
+      const newLevel = mergeResultLevel(a.level);
+      if (newLevel === null) {
+        sawMaxLevel = true;
+        continue;
+      }
+      player.weapons[i] = { weapon: a.weapon, level: newLevel };
+      player.weapons[j] = null;
+      player.weaponCooldowns = player.weapons.map(() => 0);
+      return { type: 'merged', playerId: player.id, slot: i, newLevel };
+    }
+  }
 
-  const newLevel = mergeResultLevel(a.level);
-  if (newLevel === null) return fail(player.id, MERGE_OFFER_ID, 'max level');
-
-  player.weapons[0] = { weapon: a.weapon, level: newLevel };
-  player.weapons[1] = null;
-  player.weaponCooldowns = player.weapons.map(() => 0);
-
-  return { type: 'merged', playerId: player.id, slot: 0, newLevel };
+  if (sawMaxLevel) return fail(player.id, MERGE_OFFER_ID, 'max level');
+  if (sawLevelsDiffer) return fail(player.id, MERGE_OFFER_ID, 'levels differ');
+  return fail(player.id, MERGE_OFFER_ID, 'nothing to merge');
 }

@@ -10,15 +10,16 @@
 // Drives a bot to the shop phase via debug `timescale` (accelerated wave 1)
 // + `invincible` (auto-survive), then `grantFlies` for funds, and exercises
 // every `buy` validation path from server/src/game/shop.ts:
-//   - successful weapon buy into the empty slot (exact price deducted)
-//   - rejection with "slots full" once both slots are occupied
+//   - successful weapon buys into each empty slot in turn (exact price
+//     deducted), 3 weapon slots total (WEAPON_SLOT_COUNT)
+//   - rejection with "slots full" once all 3 slots are occupied
 //   - rejection with "not enough flies" (fresh 0-flies bot)
 //   - stat price escalation across two buyMaxHp purchases (base, then
 //     base+increment), and priceNext matching the second price
 //   - move-speed purchase cap: 3 succeed, the 4th is rejected
 //     "move-speed cap reached" (the client's exact disable-reason string —
 //     see client/src/ui/shop/catalog.ts)
-//   - weapon-slot upgrade: with 2 eligible slots, an unqualified upgrade is
+//   - weapon-slot upgrade: with 3 eligible slots, an unqualified upgrade is
 //     rejected "invalid slot"; upgrading the starting tongue slot (index 0)
 //     to level II charges WEAPON_UPGRADE_PRICES[2] and the snapshot shows
 //     level 2
@@ -284,7 +285,7 @@ async function main() {
       check(`${label} (expected flies=${expectedFlies}, got=${fliesOf(bot)})`, Boolean(settled));
     }
 
-    // --- successful weapon buy into the empty slot ---
+    // --- successful weapon buy into the (first) empty slot ---
     const weaponBuyResult = await buy(bot, 'buyBubbleBlaster');
     check(
       `weapon buy into empty slot succeeds (got ${JSON.stringify(weaponBuyResult)})`,
@@ -298,10 +299,25 @@ async function main() {
     expectedFlies -= 15;
     await settleFlies('flies deducted by exact weapon price (15)');
 
-    // --- both slots now full: rejection "slots full" ---
-    const slotsFullResult = await buy(bot, 'buyCroakNova');
+    // --- successful weapon buy into the last remaining empty slot (3 weapon
+    //     slots total: starting tongue @0, bubble bought above @1, croak @2) ---
+    const weaponBuyResult2 = await buy(bot, 'buyCroakNova');
     check(
-      `weapon buy rejected "slots full" once both slots occupied (got ${JSON.stringify(slotsFullResult)})`,
+      `weapon buy into the last empty slot succeeds (got ${JSON.stringify(weaponBuyResult2)})`,
+      Boolean(weaponBuyResult2) && weaponBuyResult2.ok === true,
+    );
+    const filledSlot2 = await waitForSelf(bot, (s) => s.weapons[2] !== null, { timeoutMs: 3000 });
+    check(
+      'snapshot shows the bought weapon in the (previously empty) slot 2',
+      Boolean(filledSlot2) && filledSlot2.weapons[2]?.kind === 'croak' && filledSlot2.weapons[2]?.level === 1,
+    );
+    expectedFlies -= 18;
+    await settleFlies('flies deducted by exact weapon price (18)');
+
+    // --- all 3 slots now full: rejection "slots full" ---
+    const slotsFullResult = await buy(bot, 'buyTongueLash');
+    check(
+      `weapon buy rejected "slots full" once all 3 slots occupied (got ${JSON.stringify(slotsFullResult)})`,
       Boolean(slotsFullResult) && slotsFullResult.ok === false && slotsFullResult.reason === 'slots full',
     );
     check('flies unchanged on rejected buy', fliesOf(bot) === expectedFlies);
@@ -356,10 +372,10 @@ async function main() {
     );
     check('flies unchanged on the rejected 4th move-speed buy', fliesOf(bot) === expectedFlies);
 
-    // --- upgrade: 2 eligible slots (tongue @ slot0, bubble @ slot1), both level I ---
+    // --- upgrade: 3 eligible slots (tongue @ slot0, bubble @ slot1, croak @ slot2), all level I ---
     const upgradeNoSlotResult = await buy(bot, 'upgradeSlot');
     check(
-      `upgrade with 2 eligible slots and no slot given is rejected "invalid slot" (got ${JSON.stringify(upgradeNoSlotResult)})`,
+      `upgrade with 3 eligible slots and no slot given is rejected "invalid slot" (got ${JSON.stringify(upgradeNoSlotResult)})`,
       Boolean(upgradeNoSlotResult) && upgradeNoSlotResult.ok === false && upgradeNoSlotResult.reason === 'invalid slot',
     );
 
