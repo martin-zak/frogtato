@@ -1,3 +1,34 @@
+# Balance Notes
+
+## Live-playtest tuning log (2026-07-04, post-v0.2.0 — applied on `main`)
+
+The first human playtest resolved several of the probe findings below and
+added its own. All applied via `shared/src/constants.ts` + small sim changes:
+
+- **Wasp speed 260 → 200** — was faster than every frog's base 220;
+  inescapable by design accident. Pressure now comes from numbers.
+- **Hit-stagger added (0.35s)** — weapon-hit enemies fully stop,
+  Brotato-style; the Snail King is immune (would be stun-locked).
+- **Snails clamped inside the pond** — their keep-distance retreat walked
+  them out of the arena. Flying enemies (wasp, heron) may cross the edge.
+- **Weapon slots 2 → 3** and **fly drops ~doubled** (wasp 2, snail 5,
+  heron 4, boss 50) — bigger builds, funded economy.
+- **Heron made hittable** — orbit 350 → 280px and bubbles now lead their
+  shots via measured enemy velocity. At 350px it orbited beyond
+  tongue/croak reach while un-led bubbles geometrically never connected
+  with a 150 px/s strafing target.
+
+**Still open after the playtest:**
+- Boss kill window (finding #1 below) — re-measure with a 3-slot build:
+  `node scripts/balance-probe.mjs`. The 3rd slot + doubled economy may
+  have resolved it; if not, the suggested knobs below stand.
+- Dartfrog's early breakpoint (finding #2 below) — unchanged.
+- Overall difficulty after the player-favoring swings (3 slots + economy +
+  stagger + slower wasps): if waves feel easy now, raise
+  `enemyHpMultiplier` or spawn rates.
+
+---
+
 # P6 Balance Probe Findings (v0.2.0, pre-playtest)
 
 Bot-measured numbers from `scripts/balance-probe.mjs` (timescale ×10). These are

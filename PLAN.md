@@ -1,5 +1,11 @@
 # Frogtato — Implementation Plan
 
+> **Status: completed.** All tasks T1–T12 shipped in v0.1.0 (T2, T8, T10 and
+> T12 were split into sub-tasks in execution); Phase 2's P1–P6 (defined in
+> `DESIGN-PHASE2.md` §7) shipped in v0.2.0. Kept as the record of the
+> agent-orchestration approach: contract-first ordering, strict file
+> ownership, and machine-verifiable acceptance via the check scripts.
+
 Companion to `DESIGN.md`. The work is cut into **12 tasks (T1–T12)**, each sized to be
 completed by a single Sonnet agent in one context: a clear goal, a bounded file set,
 explicit acceptance criteria, and no design decisions left open (those live in

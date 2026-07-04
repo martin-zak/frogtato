@@ -1,5 +1,12 @@
 # Frogtato — Phase 2 Design (v0.2)
 
+> **Status: shipped as v0.2.0.** Design-time spec, kept as written. Live
+> playtesting afterwards changed some of it — 2 weapon slots became 3
+> (merging now matches any pair among them), the heron's orbit tightened
+> to 280px and bubbles lead their shots so it's actually hittable, and
+> the fly economy roughly doubled. `shared/src/constants.ts` (search
+> `TUNING`) and `BALANCE-NOTES.md` track the current numbers.
+
 Builds directly on the shipped v0.1 (`DESIGN.md`). Same pillars: small enough to
 ship, Brotato feel, co-op first. Phase 2 adds the two things v0.1's cuts left
 players wanting most — **who am I?** (classes) and **what do I build toward?**

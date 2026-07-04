@@ -3,6 +3,14 @@
 A small, browser-based, co-op Brotato clone where you play a **Frog**.
 Version: 0.1 (first playable / demo scope)
 
+> **Status: shipped as v0.1.0.** This document is the design-time spec,
+> kept as written. Where the shipped game deliberately diverges (from
+> playtesting), `shared/src/constants.ts` is authoritative — notable
+> divergences: wasp speed 260→200, enemies get a 0.35s hit-stagger,
+> snails are clamped inside the pond, weapon slots 2→3 (v0.2 playtest),
+> and fly drops were roughly doubled. Phase 2 additions live in
+> `DESIGN-PHASE2.md`.
+
 ---
 
 ## 1. Concept
