@@ -91,6 +91,12 @@ export class ShopScene extends Phaser.Scene {
     this.lastSeenPhase = null;
     this.phaseEndsAt = null;
     this.offerButtons.clear();
+    // Phaser reuses the scene INSTANCE on restart: these arrays must be
+    // re-initialized or round 2's shop reads round 1's destroyed GameObjects
+    // (live-play regression 2026-07-04: "second shop is empty grey blocks").
+    this.offerButtonsByIndex = [];
+    this.offerIdByIndex = [];
+    this.offerViewByIndex = [];
 
     this.cameras.main.setBackgroundColor(COLOR_BG);
 
