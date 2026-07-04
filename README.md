@@ -135,6 +135,22 @@ cross-agent contract drifts that did occur were caught by agents flagging
 them rather than silently breaking. Final state: 29 commits, ~11.5 k lines
 of TypeScript, 135 unit tests, 7 end-to-end suites.
 
+### Estimated token cost
+
+The fleet ran on Claude Sonnet (output $10/M tokens at mid-2026 intro
+pricing; $15/M standard). The measured 2.35 M output tokens come to
+**~$24–35**. Subagent *input* tokens aren't telemetered, but in agentic
+workloads with prompt caching the input side typically lands between 0.5×
+and 2× the output cost — putting the whole fleet at an estimated
+**~$40–90** (excludes the orchestrator session, whose usage isn't visible
+from inside the session).
+
+**In units that matter:** Brotato sells for $4.99 and hits −50% in every
+major sale. At $2.49 per discounted Brotato, building this Brotato clone
+cost approximately **16–36 Brotatos in discount** (central estimate: ~25).
+Whether writing one game from scratch for the price of 25 copies of the
+original constitutes a good deal is left as an exercise for the reader. 🥔🐸
+
 ## Version history
 
 - **v0.1.0** — complete 5-wave co-op game per `DESIGN.md`
