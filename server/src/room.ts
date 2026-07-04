@@ -552,6 +552,8 @@ export class Room {
 
   private stepEnemies(dt: number): void {
     for (const enemy of this.enemies.values()) {
+      const prevX = enemy.x;
+      const prevY = enemy.y;
       stepEnemyAi(enemy, {
         players: this.players.values(),
         dtSec: dt,
@@ -566,6 +568,9 @@ export class Room {
         spawnProjectile: (projectile) => this.projectiles.set(projectile.id, projectile),
         nextProjectileId: this.nextProjectileId,
       });
+      // Per-tick velocity, consumed by weapons.ts's bubble intercept lead.
+      enemy.vx = dt > 0 ? (enemy.x - prevX) / dt : 0;
+      enemy.vy = dt > 0 ? (enemy.y - prevY) / dt : 0;
     }
   }
 

@@ -53,6 +53,10 @@ export interface EnemyState {
   y: number;
   hp: number;
   maxHp: number;
+  /** Velocity (px/s) measured from the last sim tick by room.ts — consumed
+   * by weapons.ts for projectile intercept lead. */
+  vx: number;
+  vy: number;
   /** Hit-stagger: while > 0 the enemy is fully inert (movement + attacks). */
   staggerRemainingSec: number;
   /** Wasp only: remaining time before this wasp can deal contact damage again. */
@@ -92,6 +96,8 @@ export function createEnemy(id: string, type: EnemyTypeInternal, x: number, y: n
     y,
     hp: def.hp,
     maxHp: def.hp,
+    vx: 0,
+    vy: 0,
     staggerRemainingSec: 0,
     contactCooldownRemainingSec: 0,
     // Start snails on a full cooldown so they don't spit the instant they spawn.
@@ -331,7 +337,11 @@ function stepSnail(enemy: EnemyState, target: PlayerState, ctx: EnemyAiContext):
 // (straight line through the target, extended to the arena edge) -> circle.
 // ---------------------------------------------------------------------------
 
-const HERON_ORBIT_RADIUS = 350; // px — TUNING per DESIGN-PHASE2.md §4 ("radius ~350px")
+// TUNING (live playtest 2026-07-04): 350 -> 280. At 350 the heron orbited
+// outside tongue/croak reach at the far edge of bubble range and was
+// effectively unhittable while circling; 280 keeps it out of melee range but
+// comfortably inside bubble range.
+const HERON_ORBIT_RADIUS = 280;
 
 /**
  * Extends a line from (x1,y1) through (targetX,targetY) out to the arena

@@ -116,7 +116,14 @@ function fireTongue(player: PlayerState, target: EnemyState, range: number, dama
   if (hit) hitEnemy(player, hit, damage, ctx);
 }
 
-/** Bubble Blaster: spawns a player-source projectile toward the target's current position. */
+/**
+ * Bubble Blaster: spawns a player-source projectile with intercept lead —
+ * aimed at where the target WILL be, using its measured velocity (two
+ * fixed-point iterations of travel-time estimation; exact enough at these
+ * speeds). Without lead, anything strafing sideways faster than ~40% of
+ * projectile speed (e.g. a circling heron) was permanently unhittable
+ * (live playtest 2026-07-04).
+ */
 function fireBubble(
   player: PlayerState,
   target: EnemyState,
@@ -124,13 +131,22 @@ function fireBubble(
   damage: number,
   ctx: WeaponContext,
 ): void {
+  let aimX = target.x;
+  let aimY = target.y;
+  if (speed > 0) {
+    for (let iter = 0; iter < 2; iter++) {
+      const travelSec = Math.hypot(aimX - player.x, aimY - player.y) / speed;
+      aimX = target.x + target.vx * travelSec;
+      aimY = target.y + target.vy * travelSec;
+    }
+  }
   const projectile = spawnProjectileTowards({
     id: ctx.nextProjectileId(),
     kind: 'bubble',
     x: player.x,
     y: player.y,
-    targetX: target.x,
-    targetY: target.y,
+    targetX: aimX,
+    targetY: aimY,
     speed,
     damage,
     source: 'player',
