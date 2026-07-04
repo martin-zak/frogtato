@@ -25,6 +25,23 @@ simulation: the server runs all game logic at 30 Hz; the browser client
   end-of-run scoreboard, rematch keeps your class, refresh-proof reconnect
   (2-minute grace), music + SFX (all synthesized in-repo)
 
+## Screenshots
+
+| Lobby — pick a class, set your name | Wave 1 — kiting wasps in the pond |
+|---|---|
+| ![Lobby](docs/screenshots/lobby.png) | ![Combat](docs/screenshots/combat2.png) |
+
+| Swarmed! Croak Nova about to fire | The shop between waves |
+|---|---|
+| ![Swarmed](docs/screenshots/combat.png) | ![Shop](docs/screenshots/shop.png) |
+
+| Team wipe — end-of-run scoreboard |
+|---|
+| ![Game over](docs/screenshots/gameover.png) |
+
+*(Captured from the real game via headless Chromium driving a scripted
+frog — the same approach the repo's check suites use, one layer up.)*
+
 ## Quick start
 
 ```bash
@@ -93,6 +110,30 @@ scripts/  Headless check suites + balance probe (plain Node + ws).
 
 Balance lives entirely in `shared/src/constants.ts` — search `TUNING` for
 the knobs that came from playtesting rather than the design docs.
+
+## How it was built
+
+The game was designed and built in a single Claude Code session (2026-07-03
+→ 07-04): the orchestrating model wrote the design docs, cut them into
+agent-sized tasks with strict file ownership, and dispatched a fleet of
+Sonnet subagents — then fixed live-playtest bugs interactively the next
+morning.
+
+Fleet telemetry (from the 21 delegated subagent tasks; excludes the
+orchestrator's own usage):
+
+| Phase | Subagent tasks | Output tokens | Tool calls | Agent compute |
+|---|---|---|---|---|
+| v0.1 (T1–T12) | 15 | ~1.40 M | 683 | ~2.6 h |
+| v0.2 (P1–P5) | 5 | ~0.83 M | 401 | ~1.4 h |
+| Playtest support | 1 | ~0.12 M | 54 | ~9 min |
+| **Total** | **21** | **~2.35 M** | **1,138** | **~4.1 h** |
+
+Peak concurrency was 3 agents; every task landed with machine-verified
+acceptance (typecheck + unit tests + the headless check suites), and the
+cross-agent contract drifts that did occur were caught by agents flagging
+them rather than silently breaking. Final state: 29 commits, ~11.5 k lines
+of TypeScript, 135 unit tests, 7 end-to-end suites.
 
 ## Version history
 
